@@ -172,7 +172,34 @@ impl SlircApp {
             if !s.history.is_empty() { app.history = s.history; }
             if !s.default_channel.is_empty() { app.channel_input = s.default_channel; }
             if !s.theme.is_empty() { app.theme = s.theme; }
-            app.networks = s.networks;
+            app.networks = s.networks.clone();
+            
+            // Auto-connect to networks with auto_connect flag
+            for network in &s.networks {
+                if network.auto_connect {
+                    if let Some(server_addr) = network.servers.first() {
+                        let parts: Vec<&str> = server_addr.split(':').collect();
+                        let server = parts[0].to_string();
+                        let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(6667);
+                        
+                        let _ = app.action_tx.send(BackendAction::Connect {
+                            server,
+                            port,
+                            nickname: network.nick.clone(),
+                            username: network.nick.clone(),
+                            realname: format!("SLIRC User ({})", network.nick),
+                        });
+                        
+                        // Auto-join favorite channels
+                        for channel in &network.favorite_channels {
+                            let _ = app.action_tx.send(BackendAction::Join(channel.clone()));
+                        }
+                        
+                        // Only auto-connect to the first network with the flag
+                        break;
+                    }
+                }
+            }
         }
         app
     }
