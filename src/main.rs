@@ -310,6 +310,16 @@ fn run_backend(
                                     });
                                 }
                             }
+
+                            // NICK change (someone changed their nick)
+                            Command::NICK(newnick) => {
+                                let oldnick = message.source_nickname().unwrap_or("").to_string();
+                                // Update internal state if it was our nick
+                                if oldnick == current_nick {
+                                    current_nick = newnick.clone();
+                                }
+                                let _ = event_tx.send(GuiEvent::NickChanged { old: oldnick.clone(), new: newnick.clone() });
+                            }
                             
                             // QUIT - could update user lists
                             Command::QUIT(_) => {

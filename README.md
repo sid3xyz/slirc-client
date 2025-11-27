@@ -125,6 +125,7 @@ cargo run --release
 1. **Connect**: Enter server address (default: `irc.slirc.net:6667`) and nickname, click "Connect"
 2. **Wait for registration**: Watch the System buffer for "✓ Connected and registered!"
 3. **Join channels**: Enter channel name (default: `#straylight`) and click "+"
+    - You can also join using `/join #channel` via the input
 4. **Chat**: Select a channel buffer, type messages, press Enter or click "Send"
     - Use `/join <channel>` to join a channel (e.g., `/join #rust`)
     - Use `/part <channel> [message]` to leave a channel
@@ -134,6 +135,7 @@ cargo run --release
     - Use `/quit [message]` to quit the server gracefully
 5. **Switch buffers**: Click buffer names in the left panel
 6. **Disconnect**: Click "Disconnect" button
+7. **Change Nick**: With a connected session, update the Nick input and click "Change Nick" to request a nick change on the server.
 
 ## Default Configuration
 
