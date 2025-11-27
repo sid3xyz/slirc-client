@@ -123,6 +123,28 @@ pub fn run_backend(
                             }
                         }
                     }
+                    BackendAction::Kick { channel, nick, reason } => {
+                        if let Some(ref mut t) = transport {
+                            let kick_msg = if let Some(r) = reason {
+                                Message::kick_with_reason(&channel, &nick, &r)
+                            } else {
+                                Message::kick(&channel, &nick)
+                            };
+                            if let Err(e) = t.write_message(&kick_msg).await {
+                                let _ = event_tx.send(GuiEvent::Error(format!("Failed to kick: {}", e)));
+                            }
+                        }
+                    }
+                    BackendAction::SetUserMode { channel, nick, mode } => {
+                        if let Some(ref mut t) = transport {
+                            // Create a raw MODE command with args: MODE <channel> <mode> <nick>
+                            if let Ok(mode_msg) = Message::new(None, "MODE", vec![&channel, &mode, &nick]) {
+                                if let Err(e) = t.write_message(&mode_msg).await {
+                                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to set user mode: {}", e)));
+                                }
+                            }
+                        }
+                    }
                     BackendAction::Quit(reason) => {
                         if let Some(ref mut t) = transport {
                             let quit_msg = if let Some(r) = reason {

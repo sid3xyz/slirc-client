@@ -254,4 +254,143 @@ mod tests {
         let b = app.buffers.get("#test").unwrap();
         assert_eq!(b.topic, "New Topic");
     }
+
+    #[test]
+    fn test_whois_command_sends_action() {
+        let (action_tx, action_rx) = unbounded::<BackendAction>();
+        let (_event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: true,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "System".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+            topic_editor_open: None,
+        };
+        app.buffers.insert("System".into(), Buffer::default());
+
+        // Set the message input to a whois command and ensure the action is sent
+        app.message_input = String::from("/whois someuser");
+        assert!(app.handle_user_command());
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Whois(nick) => assert_eq!(nick, "someuser"),
+            _ => panic!("Expected Whois action"),
+        }
+    }
+
+    #[test]
+    fn test_topic_command_set_and_show() {
+        let (action_tx, action_rx) = unbounded::<BackendAction>();
+        let (_event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: true,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "#test".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+            topic_editor_open: None,
+        };
+        app.buffers.insert("#test".into(), Buffer::default());
+        // Set the message input to a topic change command and ensure the action is sent
+        app.message_input = String::from("/topic New Topic");
+        assert!(app.handle_user_command());
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::SetTopic { channel, topic } => {
+                assert_eq!(channel, "#test");
+                assert_eq!(topic, "New Topic");
+            }
+            _ => panic!("Expected SetTopic action"),
+        }
+
+        // Now test that /topic with no args displays the topic in system_log
+        app.buffers.get_mut("#test").unwrap().topic = "Displayed Topic".into();
+        app.message_input = String::from("/topic");
+        assert!(app.handle_user_command());
+        assert!(app.system_log.iter().any(|l| l.contains("Displayed Topic")));
+    }
+
+    #[test]
+    fn test_kick_command_sends_action() {
+        let (action_tx, action_rx) = unbounded::<BackendAction>();
+        let (_event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: true,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "#test".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+            topic_editor_open: None,
+        };
+        app.buffers.insert("#test".into(), Buffer::default());
+        app.message_input = String::from("/kick alice Spamming");
+        assert!(app.handle_user_command());
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Kick { channel, nick, reason } => {
+                assert_eq!(channel, "#test");
+                assert_eq!(nick, "alice");
+                assert_eq!(reason.unwrap(), "Spamming");
+            }
+            _ => panic!("Expected Kick action"),
+        }
+    }
 }

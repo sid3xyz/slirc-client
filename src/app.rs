@@ -352,7 +352,7 @@ impl SlircApp {
         }
     }
     
-    fn handle_user_command(&mut self) -> bool {
+    pub(crate) fn handle_user_command(&mut self) -> bool {
         let s = self.message_input.trim();
         if !s.starts_with('/') {
             return false;
@@ -424,6 +424,44 @@ impl SlircApp {
                     }
                 }
             }
+            "whois" | "w" => {
+                if let Some(target) = parts.next() {
+                    let _ = self.action_tx.send(BackendAction::Whois(target.to_string()));
+                } else {
+                    self.system_log.push("Usage: /whois <nick>".into());
+                }
+            }
+            "topic" | "t" => {
+                // If no argument provided, show current topic for active buffer
+                let new_topic = parts.collect::<Vec<_>>().join(" ");
+                if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
+                    if new_topic.is_empty() {
+                        if let Some(buffer) = self.buffers.get(&self.active_buffer) {
+                            if buffer.topic.is_empty() {
+                                self.system_log.push(format!("No topic set for {}", self.active_buffer));
+                            } else {
+                                self.system_log.push(format!("Topic for {}: {}", self.active_buffer, buffer.topic));
+                            }
+                        }
+                    } else {
+                        let _ = self.action_tx.send(BackendAction::SetTopic { channel: self.active_buffer.clone(), topic: new_topic });
+                    }
+                } else {
+                    self.system_log.push("/topic can only be used in a channel".into());
+                }
+            }
+            "kick" | "k" => {
+                if let Some(nick) = parts.next() {
+                    let reason = parts.collect::<Vec<_>>().join(" ");
+                    if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
+                        let _ = self.action_tx.send(BackendAction::Kick { channel: self.active_buffer.clone(), nick: nick.to_string(), reason: if reason.is_empty() { None } else { Some(reason) } });
+                    } else {
+                        self.system_log.push("/kick can only be used in a channel".into());
+                    }
+                } else {
+                    self.system_log.push("Usage: /kick <nick> [reason]".into());
+                }
+            }
             "nick" => {
                 if let Some(newnick) = parts.next() {
                     // Update locally and send to server
@@ -438,7 +476,7 @@ impl SlircApp {
                 let _ = self.action_tx.send(BackendAction::Quit(if reason.is_empty() { None } else { Some(reason) }));
             }
             "help" => {
-                self.system_log.push("Supported commands: /join, /part, /msg, /me, /nick, /quit".into());
+                self.system_log.push("Supported commands: /join, /part, /msg, /me, /nick, /quit, /whois, /topic, /kick".into());
             }
             unknown => {
                 self.system_log.push(format!("Unknown command: /{}", unknown));
@@ -807,13 +845,15 @@ impl eframe::App for SlircApp {
         egui::TopBottomPanel::bottom("input_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.message_input)
-                        .desired_width(ui.available_width() - 60.0)
-                        .hint_text("Type a message..."),
+                    egui::TextEdit::multiline(&mut self.message_input)
+                        .desired_rows(3)
+                        .desired_width(ui.available_width())
+                        .hint_text("Type a message... (Enter to send, Shift+Enter for newline)"),
                 );
                 
-                let send_clicked = ui.button("Send").clicked();
-                let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                // Detect Enter (without Shift) to send a message. Shift+Enter inserts newline in the
+                // multiline text edit by default.
+                let enter_pressed = response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
 
                 // Input history navigation
                 if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
@@ -875,7 +915,7 @@ impl eframe::App for SlircApp {
                 }
                 self.last_input_text = self.message_input.clone();
 
-                if (send_clicked || enter_pressed) && !self.message_input.is_empty() {
+                if enter_pressed && !self.message_input.is_empty() {
                     // If it begins with a slash, treat as a command
                     if self.message_input.starts_with('/') {
                         if self.handle_user_command() {
@@ -994,6 +1034,39 @@ impl eframe::App for SlircApp {
                                 let _ = self.action_tx.send(BackendAction::Whois(user.to_string()));
                                 self.context_menu_visible = false;
                             }
+                            if ui.button("Cancel").clicked() {
+                                self.context_menu_visible = false;
+                            }
+                            // Show op actions if we're an op in this channel
+                            if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
+                                let is_op = self.buffers.get(&self.active_buffer)
+                                    .map(|b| b.users.iter().any(|u| u.nick == self.nickname_input && Self::prefix_rank(u.prefix) >= 3))
+                                    .unwrap_or(false);
+                                if is_op {
+                                    ui.separator();
+                                    ui.label("Op Actions:");
+                                    if ui.button("Op (+o)").clicked() {
+                                        let _ = self.action_tx.send(BackendAction::SetUserMode { channel: self.active_buffer.clone(), nick: user.to_string(), mode: "+o".to_string() });
+                                        self.context_menu_visible = false;
+                                    }
+                                    if ui.button("Deop (-o)").clicked() {
+                                        let _ = self.action_tx.send(BackendAction::SetUserMode { channel: self.active_buffer.clone(), nick: user.to_string(), mode: "-o".to_string() });
+                                        self.context_menu_visible = false;
+                                    }
+                                    if ui.button("Voice (+v)").clicked() {
+                                        let _ = self.action_tx.send(BackendAction::SetUserMode { channel: self.active_buffer.clone(), nick: user.to_string(), mode: "+v".to_string() });
+                                        self.context_menu_visible = false;
+                                    }
+                                    if ui.button("Devoice (-v)").clicked() {
+                                        let _ = self.action_tx.send(BackendAction::SetUserMode { channel: self.active_buffer.clone(), nick: user.to_string(), mode: "-v".to_string() });
+                                        self.context_menu_visible = false;
+                                    }
+                                    if ui.button("Kick").clicked() {
+                                        let _ = self.action_tx.send(BackendAction::Kick { channel: self.active_buffer.clone(), nick: user.to_string(), reason: None });
+                                        self.context_menu_visible = false;
+                                    }
+                                }
+                            }
                         });
                 } else {
                     egui::Window::new(format!("Actions: {}", target))
@@ -1012,6 +1085,9 @@ impl eframe::App for SlircApp {
                             }
                             if ui.button("Open in new window").clicked() {
                                 self.open_windows.insert(target.clone());
+                                self.context_menu_visible = false;
+                            }
+                            if ui.button("Cancel").clicked() {
                                 self.context_menu_visible = false;
                             }
                         });

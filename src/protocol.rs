@@ -25,6 +25,10 @@ pub enum BackendAction {
     SetTopic { channel: String, topic: String },
     /// Request WHOIS information for a nick
     Whois(String),
+    /// Kick a user from a channel
+    Kick { channel: String, nick: String, reason: Option<String> },
+    /// Set a user mode in a channel by sending MODE <channel> <+/-mode> <nick>
+    SetUserMode { channel: String, nick: String, mode: String },
 }
 
 /// Events sent from the Backend to the UI
