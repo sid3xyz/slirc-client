@@ -8,6 +8,31 @@ use std::path::PathBuf;
 pub const DEFAULT_SERVER: &str = "irc.slirc.net:6667";
 pub const DEFAULT_CHANNEL: &str = "#straylight";
 
+/// Represents a saved IRC network with connection settings
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Network {
+    pub name: String,
+    pub servers: Vec<String>, // e.g. ["irc.libera.chat:6667", "irc.libera.chat:6697"]
+    pub nick: String,
+    pub auto_connect: bool,
+    pub favorite_channels: Vec<String>, // Auto-join channels
+    #[serde(default)]
+    pub nickserv_password: Option<String>, // TODO: Encrypt this
+}
+
+impl Default for Network {
+    fn default() -> Self {
+        Self {
+            name: "Default".to_string(),
+            servers: vec![DEFAULT_SERVER.to_string()],
+            nick: "slirc_user".to_string(),
+            auto_connect: false,
+            favorite_channels: vec![],
+            nickserv_password: None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct Settings {
     pub server: String,
@@ -15,6 +40,8 @@ pub struct Settings {
     pub default_channel: String,
     pub history: Vec<String>,
     pub theme: String,
+    #[serde(default)]
+    pub networks: Vec<Network>,
 }
 
 pub fn settings_path() -> Option<PathBuf> {

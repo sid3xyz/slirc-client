@@ -69,6 +69,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         assert_eq!(app.clean_motd_line("-"), "");
         assert_eq!(app.clean_motd_line(":-"), "");
@@ -109,6 +113,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("System".into(), Buffer::default());
 
@@ -149,6 +157,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("System".into(), Buffer::default());
 
@@ -198,6 +210,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("System".into(), Buffer::default());
         // Create a channel buffer with one user
@@ -247,6 +263,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("System".into(), Buffer::default());
         let _ = event_tx.send(GuiEvent::Topic { channel: "#test".into(), topic: "New Topic".into() });
@@ -285,6 +305,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("System".into(), Buffer::default());
 
@@ -328,6 +352,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("#test".into(), Buffer::default());
         // Set the message input to a topic change command and ensure the action is sent
@@ -379,6 +407,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("#test".into(), Buffer::default());
         app.message_input = String::from("/kick alice Spamming");
@@ -424,6 +456,10 @@ mod tests {
             theme: String::from("dark"),
             font_fallback: None,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: crate::app::NetworkForm::default(),
         };
         app.buffers.insert("#test".into(), Buffer::default());
         app.message_input = String::from("/me waves hello");

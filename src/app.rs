@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::protocol::{BackendAction, GuiEvent, UserInfo};
 use crate::buffer::Buffer;
-use crate::config::{Settings, load_settings, save_settings, DEFAULT_SERVER, DEFAULT_CHANNEL};
+use crate::config::{Settings, Network, load_settings, save_settings, DEFAULT_SERVER, DEFAULT_CHANNEL};
 use crate::backend::run_backend;
 
 pub struct SlircApp {
@@ -50,6 +50,22 @@ pub struct SlircApp {
     pub theme: String,
     // If we loaded a fallback font from the system, store it here
     pub font_fallback: Option<String>,
+    // Network management
+    pub networks: Vec<Network>,
+    pub network_manager_open: bool,
+    pub editing_network: Option<usize>, // Index of network being edited, None = new
+    pub network_form: NetworkForm,
+}
+
+/// Form state for creating/editing a network
+#[derive(Default, Clone)]
+pub struct NetworkForm {
+    pub name: String,
+    pub servers: String, // Comma-separated
+    pub nick: String,
+    pub auto_connect: bool,
+    pub favorite_channels: String, // Comma-separated
+    pub nickserv_password: String,
 }
 
 impl SlircApp {
@@ -141,6 +157,10 @@ impl SlircApp {
             buffers_order: vec!["System".into()],
             font_fallback: chosen_font,
             topic_editor_open: None,
+            networks: Vec::new(),
+            network_manager_open: false,
+            editing_network: None,
+            network_form: NetworkForm::default(),
         };
         
         // Create the System buffer
@@ -152,6 +172,7 @@ impl SlircApp {
             if !s.history.is_empty() { app.history = s.history; }
             if !s.default_channel.is_empty() { app.channel_input = s.default_channel; }
             if !s.theme.is_empty() { app.theme = s.theme; }
+            app.networks = s.networks;
         }
         app
     }
@@ -165,6 +186,20 @@ impl SlircApp {
             }
         }
         self.buffers.get_mut(name).unwrap()
+    }
+    
+    fn save_networks(&self) {
+        let settings = Settings {
+            server: self.server_input.clone(),
+            nick: self.nickname_input.clone(),
+            default_channel: self.channel_input.clone(),
+            history: self.history.clone(),
+            theme: self.theme.clone(),
+            networks: self.networks.clone(),
+        };
+        if let Err(e) = save_settings(&settings) {
+            eprintln!("Failed to save networks: {}", e);
+        }
     }
 
     fn nick_color(nick: &str) -> Color32 {
@@ -743,6 +778,7 @@ impl eframe::App for SlircApp {
                         default_channel: self.channel_input.clone(),
                         history: self.history.clone(),
                         theme: self.theme.clone(),
+                        networks: self.networks.clone(),
                     };
                     let _ = save_settings(&settings);
                 }
@@ -755,6 +791,7 @@ impl eframe::App for SlircApp {
                         default_channel: self.channel_input.clone(),
                         history: self.history.clone(),
                         theme: self.theme.clone(),
+                        networks: self.networks.clone(),
                     };
                     let _ = save_settings(&settings);
                 }
@@ -773,6 +810,11 @@ impl eframe::App for SlircApp {
                             username: self.nickname_input.clone(),
                             realname: format!("SLIRC User ({})", self.nickname_input),
                         });
+                    }
+                    
+                    // Network manager button
+                    if ui.button("Networks...").clicked() {
+                        self.network_manager_open = true;
                     }
                 } else {
                     if ui.button("Disconnect").clicked() {
@@ -1234,6 +1276,174 @@ impl eframe::App for SlircApp {
                 self.topic_editor_open = None;
             }
         }
+        
+        // Network Manager window
+        if self.network_manager_open {
+            let mut open = true;
+            egui::Window::new("Network Manager")
+                .open(&mut open)
+                .resizable(true)
+                .default_width(500.0)
+                .show(ctx, |ui| {
+                    ui.heading("Saved Networks");
+                    ui.separator();
+                    
+                    // List of networks
+                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        let mut to_delete: Option<usize> = None;
+                        for (idx, network) in self.networks.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                let label = if network.auto_connect {
+                                    format!("✓ {}", network.name)
+                                } else {
+                                    network.name.clone()
+                                };
+                                ui.label(egui::RichText::new(label).strong());
+                                ui.label(format!("({})", network.servers.join(", ")));
+                                
+                                if ui.button("Edit").clicked() {
+                                    self.editing_network = Some(idx);
+                                    let net = &self.networks[idx];
+                                    self.network_form = NetworkForm {
+                                        name: net.name.clone(),
+                                        servers: net.servers.join(", "),
+                                        nick: net.nick.clone(),
+                                        auto_connect: net.auto_connect,
+                                        favorite_channels: net.favorite_channels.join(", "),
+                                        nickserv_password: net.nickserv_password.clone().unwrap_or_default(),
+                                    };
+                                }
+                                
+                                if ui.button("Connect").clicked() {
+                                    if let Some(server_addr) = network.servers.first() {
+                                        let parts: Vec<&str> = server_addr.split(':').collect();
+                                        let server = parts[0].to_string();
+                                        let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(6667);
+                                        
+                                        let _ = self.action_tx.send(BackendAction::Connect {
+                                            server,
+                                            port,
+                                            nickname: network.nick.clone(),
+                                            username: network.nick.clone(),
+                                            realname: format!("SLIRC User ({})", network.nick),
+                                        });
+                                        
+                                        // Auto-join favorite channels after a brief delay
+                                        // (We should track connection state better, but this is a start)
+                                        for channel in &network.favorite_channels {
+                                            let _ = self.action_tx.send(BackendAction::Join(channel.clone()));
+                                        }
+                                        
+                                        self.network_manager_open = false;
+                                    }
+                                }
+                                
+                                if ui.button("Delete").clicked() {
+                                    to_delete = Some(idx);
+                                }
+                            });
+                        }
+                        
+                        if let Some(idx) = to_delete {
+                            self.networks.remove(idx);
+                            self.save_networks();
+                        }
+                    });
+                    
+                    ui.separator();
+                    
+                    // Add/Edit network form
+                    if self.editing_network.is_some() || ui.button("Add Network").clicked() && self.editing_network.is_none() {
+                        if self.editing_network.is_none() {
+                            // Start adding a new network
+                            self.network_form = NetworkForm::default();
+                        }
+                        
+                        ui.heading(if self.editing_network.is_some() { "Edit Network" } else { "New Network" });
+                        ui.separator();
+                        
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            ui.text_edit_singleline(&mut self.network_form.name);
+                        });
+                        
+                        ui.horizontal(|ui| {
+                            ui.label("Servers:");
+                            ui.text_edit_singleline(&mut self.network_form.servers);
+                        });
+                        ui.label("(Comma-separated, e.g., irc.libera.chat:6667, irc.libera.chat:6697)");
+                        
+                        ui.horizontal(|ui| {
+                            ui.label("Nickname:");
+                            ui.text_edit_singleline(&mut self.network_form.nick);
+                        });
+                        
+                        ui.checkbox(&mut self.network_form.auto_connect, "Auto-connect on startup");
+                        
+                        ui.horizontal(|ui| {
+                            ui.label("Favorite Channels:");
+                            ui.text_edit_singleline(&mut self.network_form.favorite_channels);
+                        });
+                        ui.label("(Comma-separated, e.g., #channel1, #channel2)");
+                        
+                        ui.horizontal(|ui| {
+                            ui.label("NickServ Password:");
+                            ui.add(egui::TextEdit::singleline(&mut self.network_form.nickserv_password).password(true));
+                        });
+                        ui.label("(Optional, stored in plain text - use with caution!)");
+                        
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Save").clicked() {
+                                let servers: Vec<String> = self.network_form.servers
+                                    .split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect();
+                                    
+                                let favorite_channels: Vec<String> = self.network_form.favorite_channels
+                                    .split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect();
+                                    
+                                let network = Network {
+                                    name: self.network_form.name.clone(),
+                                    servers,
+                                    nick: self.network_form.nick.clone(),
+                                    auto_connect: self.network_form.auto_connect,
+                                    favorite_channels,
+                                    nickserv_password: if self.network_form.nickserv_password.is_empty() {
+                                        None
+                                    } else {
+                                        Some(self.network_form.nickserv_password.clone())
+                                    },
+                                };
+                                
+                                if let Some(idx) = self.editing_network {
+                                    self.networks[idx] = network;
+                                } else {
+                                    self.networks.push(network);
+                                }
+                                
+                                self.save_networks();
+                                self.editing_network = None;
+                                self.network_form = NetworkForm::default();
+                            }
+                            
+                            if ui.button("Cancel").clicked() {
+                                self.editing_network = None;
+                                self.network_form = NetworkForm::default();
+                            }
+                        });
+                    }
+                });
+            
+            if !open {
+                self.network_manager_open = false;
+                self.editing_network = None;
+            }
+        }
     }
 }
 
@@ -1246,6 +1456,7 @@ impl Drop for SlircApp {
             default_channel: self.channel_input.clone(),
             history: self.history.clone(),
             theme: self.theme.clone(),
+            networks: self.networks.clone(),
         };
         if let Err(e) = save_settings(&settings) {
             eprintln!("Failed to save settings: {}", e);
