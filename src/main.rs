@@ -1023,6 +1023,11 @@ impl eframe::App for SlircApp {
                 ui.separator();
                 // Show buffers in order (also used by top tabs)
                 ui.vertical(|ui| {
+                    // If only system buffer exists, hint the user to join a channel
+                    if self.buffers_order.len() <= 1 {
+                        ui.label(egui::RichText::new("No channels joined. Use the 'Channel' field in the top bar to join a channel.").color(egui::Color32::LIGHT_GRAY));
+                        ui.separator();
+                    }
                     for name in self.buffers_order.clone() {
                         // Snapshot of the buffer's state to avoid borrow conflicts
                         let (unread, has_mention, _users_len, selected) = if let Some(b) = self.buffers.get(&name) {
@@ -1399,5 +1404,42 @@ mod tests {
         assert_eq!(SlircApp::clean_motd_line("- ═════════"), "═════════");
         assert_eq!(SlircApp::clean_motd_line("Hello"), "Hello");
         assert_eq!(SlircApp::clean_motd_line(" - Hello"), "Hello");
+    }
+
+    #[test]
+    fn test_motd_processed_in_system_log() {
+        let (action_tx, _action_rx) = unbounded::<BackendAction>();
+        let (event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: false,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "System".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+        };
+        app.buffers.insert("System".into(), Buffer::default());
+
+        let motd_line = String::from(":- Welcome to the server");
+        let _ = event_tx.send(GuiEvent::Motd(motd_line));
+        app.process_events();
+        assert!(app.system_log.iter().any(|l| l.contains("MOTD: Welcome to the server")));
     }
 }
