@@ -79,7 +79,7 @@ enum GuiEvent {
     /// Names list for a channel
     Names { channel: String, names: Vec<String> },
     /// Notification that the nick changed locally
-    NickChanged(String),
+    NickChanged { old: String, new: String },
 }
 
 // ============================================================================
@@ -175,8 +175,9 @@ fn run_backend(
                             if let Err(e) = t.write_message(&nick_msg).await {
                                 let _ = event_tx.send(GuiEvent::Error(format!("Failed to send NICK: {}", e)));
                             } else {
+                                let old_nick = current_nick.clone();
                                 current_nick = newnick.clone();
-                                let _ = event_tx.send(GuiEvent::NickChanged(newnick));
+                                let _ = event_tx.send(GuiEvent::NickChanged { old: old_nick, new: newnick.clone() });
                             }
                         } else {
                             let _ = event_tx.send(GuiEvent::Error("Not connected".into()));
@@ -355,6 +356,8 @@ struct Buffer {
     messages: Vec<(String, String, String)>, // (timestamp, sender, text)
     users: Vec<String>,
     topic: String,
+    unread: usize,
+    has_mention: bool,
 }
 
 struct SlircApp {
@@ -369,6 +372,7 @@ struct SlircApp {
     
     // UI State
     buffers: HashMap<String, Buffer>,
+    buffers_order: Vec<String>,
     active_buffer: String,
     channel_input: String,
     message_input: String,
@@ -413,12 +417,24 @@ impl SlircApp {
             history: Vec::new(),
             history_pos: None,
             history_saved_input: None,
+            buffers_order: vec!["System".into()],
         };
         
         // Create the System buffer
         app.buffers.insert("System".into(), Buffer::default());
         
         app
+    }
+
+    fn ensure_buffer(&mut self, name: &str) -> &mut Buffer {
+        if !self.buffers.contains_key(name) {
+            self.buffers.insert(name.to_string(), Buffer::default());
+            // keep insertion order
+            if !self.buffers_order.contains(&name.to_string()) {
+                self.buffers_order.push(name.to_string());
+            }
+        }
+        self.buffers.get_mut(name).unwrap()
     }
     
     fn handle_user_command(&mut self) -> bool {
@@ -536,11 +552,27 @@ impl SlircApp {
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     self.system_log.push(format!("[{}] ⚠ Error: {}", ts, msg));
                 }
-                GuiEvent::NickChanged(newnick) => {
-                    // Keep the UI name in sync with the backend's current nick
-                    self.nickname_input = newnick.clone();
+                GuiEvent::NickChanged { old, new } => {
+                    // Update user lists in all buffers where the old nick existed
+                    for (buffer_name, buffer) in self.buffers.iter_mut() {
+                        if buffer.users.iter().any(|u| u == &old) {
+                            for user in buffer.users.iter_mut() {
+                                if user == &old {
+                                    *user = new.clone();
+                                }
+                            }
+                            let ts = Local::now().format("%H:%M:%S").to_string();
+                            buffer.messages.push((ts.clone(), "*".into(), format!("{} is now known as {}", old, new)));
+                            // If buffer not active, mark unread
+                            if *buffer_name != self.active_buffer {
+                                buffer.unread += 1;
+                            }
+                        }
+                    }
+                    // Update the UI nickname field when the server acknowledges it
+                    self.nickname_input = new.clone();
                     let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log.push(format!("[{}] Nick changed to {}", ts, newnick));
+                    self.system_log.push(format!("[{}] Nick changed to {} (was: {})", ts, new, old));
                 }
                 
                 GuiEvent::RawMessage(msg) => {
@@ -560,18 +592,34 @@ impl SlircApp {
                         // Private message - use sender as buffer name
                         sender.clone()
                     };
+
                     let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.buffers
-                        .entry(buffer_name.clone())
-                        .or_insert_with(Buffer::default)
-                        .messages
-                        .push((ts, sender, text));
+                    let mention = text.contains(&self.nickname_input);
+                    let is_own_msg = sender == self.nickname_input;
+                    let active = self.active_buffer.clone();
+                    let buffer = self.ensure_buffer(&buffer_name);
+                    buffer.messages.push((ts.clone(), sender.clone(), text.clone()));
+                    // Keep user list updated if a new nick speaks
+                    if buffer_name.starts_with('#') || buffer_name.starts_with('&') {
+                        if !buffer.users.contains(&sender) {
+                            buffer.users.push(sender.clone());
+                            buffer.users.sort();
+                        }
+                    }
+                    if !is_own_msg && buffer_name != active {
+                        buffer.unread += 1;
+                        if mention {
+                            buffer.has_mention = true;
+                        }
+                    }
                 }
                 
                 GuiEvent::JoinedChannel(channel) => {
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     self.system_log.push(format!("[{}] ✓ Joined {}", ts, channel));
-                    self.buffers.entry(channel.clone()).or_insert_with(Buffer::default);
+                    let buffer = self.ensure_buffer(&channel);
+                    buffer.unread = 0;
+                    buffer.has_mention = false;
                     self.active_buffer = channel;
                 }
                 
@@ -579,28 +627,35 @@ impl SlircApp {
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     self.system_log.push(format!("[{}] ← Left {}", ts, channel));
                     self.buffers.remove(&channel);
+                    self.buffers_order.retain(|b| b != &channel);
                     if self.active_buffer == channel {
                         self.active_buffer = "System".into();
                     }
                 }
                 
                 GuiEvent::UserJoined { channel, nick } => {
-                    if let Some(buffer) = self.buffers.get_mut(&channel) {
-                        let ts = Local::now().format("%H:%M:%S").to_string();
-                        buffer.messages.push((ts, "→".into(), format!("{} joined", nick)));
-                        if !buffer.users.contains(&nick) {
-                            buffer.users.push(nick);
-                            buffer.users.sort();
-                        }
+                    let active = self.active_buffer.clone();
+                    let buffer = self.ensure_buffer(&channel);
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    buffer.messages.push((ts.clone(), "→".into(), format!("{} joined", nick)));
+                    if !buffer.users.contains(&nick) {
+                        buffer.users.push(nick.clone());
+                        buffer.users.sort();
+                    }
+                    if active != channel {
+                        buffer.unread += 1;
                     }
                 }
                 
                 GuiEvent::UserParted { channel, nick, message } => {
-                    if let Some(buffer) = self.buffers.get_mut(&channel) {
-                        let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
-                        let ts = Local::now().format("%H:%M:%S").to_string();
-                        buffer.messages.push((ts, "←".into(), format!("{} left{}", nick, msg)));
-                        buffer.users.retain(|u| u != &nick);
+                    let active = self.active_buffer.clone();
+                    let buffer = self.ensure_buffer(&channel);
+                    let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    buffer.messages.push((ts.clone(), "←".into(), format!("{} left{}", nick, msg)));
+                    buffer.users.retain(|u| u != &nick);
+                    if active != channel {
+                        buffer.unread += 1;
                     }
                 }
                 
@@ -610,18 +665,20 @@ impl SlircApp {
                 }
                 
                 GuiEvent::Topic { channel, topic } => {
-                    if let Some(buffer) = self.buffers.get_mut(&channel) {
-                        buffer.topic = topic.clone();
-                        let ts = Local::now().format("%H:%M:%S").to_string();
-                        buffer.messages.push((ts, "*".into(), format!("Topic: {}", topic)));
+                    let active = self.active_buffer.clone();
+                    let buffer = self.ensure_buffer(&channel);
+                    buffer.topic = topic.clone();
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    buffer.messages.push((ts.clone(), "*".into(), format!("Topic: {}", topic)));
+                    if active != channel {
+                        buffer.unread += 1;
                     }
                 }
                 
                 GuiEvent::Names { channel, names } => {
-                    if let Some(buffer) = self.buffers.get_mut(&channel) {
-                        buffer.users = names;
-                        buffer.users.sort();
-                    }
+                    let buffer = self.ensure_buffer(&channel);
+                    buffer.users = names;
+                    buffer.users.sort();
                 }
             }
         }
@@ -670,6 +727,10 @@ impl eframe::App for SlircApp {
                     if ui.button("Disconnect").clicked() {
                         let _ = self.action_tx.send(BackendAction::Disconnect);
                     }
+                    // Optionally change nick while connected
+                    if ui.button("Change Nick").clicked() {
+                        let _ = self.action_tx.send(BackendAction::Nick(self.nickname_input.clone()));
+                    }
                     
                     ui.separator();
                     
@@ -692,22 +753,56 @@ impl eframe::App for SlircApp {
             });
         });
         
-        // Left panel: Buffer list
+        // Left panel: Buffer list (vertical tabs similar to HexChat)
         egui::SidePanel::left("buffers_panel")
             .resizable(true)
-            .default_width(150.0)
+            .default_width(180.0)
             .show(ctx, |ui| {
                 ui.heading("Buffers");
                 ui.separator();
-                
-                // List all buffers
-                let buffer_names: Vec<String> = self.buffers.keys().cloned().collect();
-                for name in buffer_names {
-                    let selected = self.active_buffer == name;
-                    if ui.selectable_label(selected, &name).clicked() {
-                        self.active_buffer = name.clone();
+                // Show buffers in order
+                ui.vertical(|ui| {
+                    for name in self.buffers_order.clone() {
+                        // Snapshot of the buffer's state to avoid borrow conflicts
+                        let (unread, has_mention, _users_len, selected) = if let Some(b) = self.buffers.get(&name) {
+                            (b.unread, b.has_mention, b.users.len(), self.active_buffer == name)
+                        } else {
+                            (0, false, 0, false)
+                        };
+
+                        ui.horizontal(|ui| {
+                            let rich = if has_mention {
+                                egui::RichText::new(name.clone()).color(egui::Color32::LIGHT_RED).strong()
+                            } else if selected {
+                                egui::RichText::new(name.clone()).color(egui::Color32::WHITE).strong()
+                            } else {
+                                egui::RichText::new(name.clone()).color(egui::Color32::LIGHT_GRAY)
+                            };
+
+                            if ui.selectable_label(selected, rich).clicked() {
+                                self.active_buffer = name.clone();
+                                if let Some(mut_b) = self.buffers.get_mut(&name) {
+                                    mut_b.unread = 0;
+                                    mut_b.has_mention = false;
+                                }
+                            }
+
+                            if unread > 0 {
+                                ui.label(egui::RichText::new(format!("({})", unread)).color(egui::Color32::LIGHT_BLUE));
+                            }
+                            if name != "System" {
+                                if ui.small_button("x").clicked() {
+                                    // send part
+                                    let _ = self.action_tx.send(BackendAction::Part { channel: name.clone(), message: None });
+                                    // Also remove from our local mapping immediately
+                                    self.buffers.remove(&name);
+                                    self.buffers_order.retain(|b| b != &name);
+                                    if self.active_buffer == name { self.active_buffer = "System".into(); }
+                                }
+                            }
+                        });
                     }
-                }
+                });
             });
         
         // Right panel: User list (for channels)
@@ -806,16 +901,30 @@ impl eframe::App for SlircApp {
             });
         });
         
-        // Central panel: Messages
+        // Central panel: Messages and header
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Show topic if there is one
+            // Header: active buffer and topic
+            ui.horizontal(|ui| {
+                ui.heading(&self.active_buffer);
+                if let Some(buffer) = self.buffers.get(&self.active_buffer) {
+                    if !buffer.topic.is_empty() {
+                        ui.separator();
+                        ui.colored_label(egui::Color32::LIGHT_YELLOW, &buffer.topic);
+                    }
+                    // show user count
+                    ui.separator();
+                    ui.label(format!("Users: {}", buffer.users.len()));
+                    if buffer.unread > 0 {
+                        ui.colored_label(egui::Color32::LIGHT_BLUE, format!("Unread: {}", buffer.unread));
+                    }
+                    if buffer.has_mention { ui.colored_label(egui::Color32::LIGHT_RED, "Mention"); }
+                }
+            });
+            ui.separator();
+            // Show topic if there is one (keep backward compatibility)
             if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                 if !buffer.topic.is_empty() {
-                    ui.horizontal(|ui| {
-                        ui.label("Topic:");
-                        ui.label(&buffer.topic);
-                    });
-                    ui.separator();
+                    // (topic already displayed in header)
                 }
             }
             
@@ -831,18 +940,39 @@ impl eframe::App for SlircApp {
                         }
                     } else if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                         for (ts, sender, text) in &buffer.messages {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(format!("[{}]", ts))
+                            let mention = text.contains(&self.nickname_input);
+                            if sender == &self.nickname_input {
+                                // Align own messages to the right
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                    ui.label(egui::RichText::new(text).color(egui::Color32::from_rgb(80, 200, 120)));
+                                    ui.label(
+                                        egui::RichText::new(format!("<{}>", sender))
+                                            .color(egui::Color32::LIGHT_BLUE)
+                                            .strong(),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("[{}]", ts))
                                         .color(egui::Color32::LIGHT_GRAY),
-                                );
-                                ui.label(
-                                    egui::RichText::new(format!("<{}>", sender))
-                                        .color(egui::Color32::LIGHT_BLUE)
-                                        .strong(),
-                                );
-                                ui.label(text);
-                            });
+                                    );
+                                });
+                            } else {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("[{}]", ts))
+                                            .color(egui::Color32::LIGHT_GRAY),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("<{}>", sender))
+                                            .color(egui::Color32::LIGHT_BLUE)
+                                            .strong(),
+                                    );
+                                    if mention {
+                                        ui.label(egui::RichText::new(text).color(egui::Color32::LIGHT_RED));
+                                    } else {
+                                        ui.label(text);
+                                    }
+                                });
+                            }
                         }
                     }
                 });
