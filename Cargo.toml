@@ -21,3 +21,7 @@ slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
 # Channels for UI <-> Backend communication
 crossbeam-channel = "0.5"
 chrono = "0.4.42"
+regex = "1.12.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+directories = "4.0"

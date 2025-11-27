@@ -19,6 +19,15 @@ A native IRC client built with [egui](https://github.com/emilk/egui) and the [sl
  - **Channel tabs (left)** - Buffers are shown as vertical tabs with unread badges
  - **Mentions highlight** - Messages that mention your nick are highlighted
 
+## Development Notes (HexChat UI Alignment)
+
+- The UI now uses the left buffer panel as the single navigation surface (Top horizontal tabs removed during Phase 1 refactor).
+- Buffer user lists now track nick prefixes (e.g. `@` for ops, `+` for voiced users) and are sorted by prefix rank (owner/admin/op/halfop/voice/regular).
+- Messages are left-aligned in the central pane with unified `[time] <nick> Message` format and colors for own messages and mentions.
+- The backend parses `NAMES` replies and preserves nick prefixes for accurate user list rendering, and channel `MODE` changes update prefixes.
+
+See `HEXCHAT_UI_PLAN.md` for implementation plan and next steps (Phase 2+).
+
 ## Architecture
 
 SLIRC Client uses a **dual-thread architecture** to bridge the async network layer with the synchronous GUI:

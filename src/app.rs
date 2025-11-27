@@ -7,7 +7,7 @@ use eframe::egui;
 use eframe::egui::Color32;
 use regex::Regex;
 
-use crate::protocol::{BackendAction, GuiEvent};
+use crate::protocol::{BackendAction, GuiEvent, UserInfo};
 use crate::buffer::Buffer;
 use crate::config::{Settings, load_settings, save_settings, DEFAULT_SERVER, DEFAULT_CHANNEL};
 use crate::backend::run_backend;
@@ -46,6 +46,8 @@ pub struct SlircApp {
     pub completion_target_channel: bool,
     pub last_input_text: String,
     pub theme: String,
+    // If we loaded a fallback font from the system, store it here
+    pub font_fallback: Option<String>,
 }
 
 impl SlircApp {
@@ -64,6 +66,47 @@ impl SlircApp {
             match s.theme.as_str() {
                 "light" => cc.egui_ctx.set_visuals(egui::Visuals::light()),
                 _ => cc.egui_ctx.set_visuals(egui::Visuals::dark()),
+            }
+        }
+
+        // Try to load a fallback font from common system font paths so Unicode box
+        // drawing characters (like '═' U+2550) and other glyphs render correctly.
+        // We don't ship fonts with the app; instead attempt to find popular fonts
+        // that are likely present on Linux/Mac/Windows systems.
+        let mut fonts = egui::FontDefinitions::default();
+        // Candidate font paths (ordered preference). We attempt to read them
+        // in runtime and register the first that exists.
+        let candidates = vec![
+            // Linux common fonts
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            // macOS common fonts
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/Library/Fonts/AppleGothic.ttf",
+            // Windows common fonts (will usually not exist on Linux)
+            "C:\\Windows\\Fonts\\seguisym.ttf",
+            "C:\\Windows\\Fonts\\DejaVuSans.ttf",
+        ];
+
+        let mut chosen_font: Option<String> = None;
+        for path in candidates.iter() {
+            let p = std::path::Path::new(path);
+            if p.exists() {
+                if let Ok(bytes) = std::fs::read(p) {
+                    // Register this font as the highest-priority fallback for both
+                    // proportional and monospace font families.
+                    fonts.font_data.insert("fallback_font".to_owned(), egui::FontData::from_owned(bytes).into());
+                    // Insert at the beginning so our fallback is first tried
+                    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "fallback_font".to_owned());
+                    fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().insert(0, "fallback_font".to_owned());
+                    cc.egui_ctx.set_fonts(fonts);
+                    chosen_font = Some(path.to_string());
+                    break;
+                }
             }
         }
         
@@ -94,6 +137,7 @@ impl SlircApp {
             context_menu_target: None,
             open_windows: HashSet::new(),
             buffers_order: vec!["System".into()],
+            font_fallback: chosen_font,
         };
         
         // Create the System buffer
@@ -144,6 +188,25 @@ impl SlircApp {
         COLORS[idx]
     }
 
+    fn prefix_rank(prefix: Option<char>) -> u8 {
+        match prefix {
+            Some('~') => 5, // owner
+            Some('&') => 4, // admin
+            Some('@') => 3, // op
+            Some('%') => 2, // half-op
+            Some('+') => 1, // voice
+            _ => 0,
+        }
+    }
+
+    fn sort_users(users: &mut Vec<UserInfo>) {
+        users.sort_by(|a, b| {
+            let ar = Self::prefix_rank(a.prefix);
+            let br = Self::prefix_rank(b.prefix);
+            br.cmp(&ar).then(a.nick.cmp(&b.nick))
+        });
+    }
+
     fn render_message_text(&self, ui: &mut egui::Ui, buffer: &Buffer, text: &str, accent: Option<Color32>) {
         // tokenize by whitespace and color tokens: nicks, emotes (:emote:), urls
         let url_re = Regex::new(r"^(https?://|www\.)[\w\-\.\/~%&=:+?#]+$").unwrap();
@@ -152,6 +215,9 @@ impl SlircApp {
         for (i, &tok) in tokens.iter().enumerate() {
             if i > 0 { ui.label(" "); }
             let stripped = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '@');
+            // If the token is prefixed with '@' to indicate a mention (e.g. `@nick`),
+            // normalize for lookup by stripping the '@' for nickname matching.
+            let stripped_nick = stripped.trim_start_matches('@');
             if let Some(color) = accent {
                 if url_re.is_match(tok) {
                     ui.hyperlink_to(tok, tok);
@@ -164,8 +230,8 @@ impl SlircApp {
                 ui.hyperlink_to(tok, tok);
             } else if emote_re.is_match(tok) {
                 ui.label(egui::RichText::new(tok).color(egui::Color32::from_rgb(255, 205, 0)).italics());
-            } else if buffer.users.iter().any(|u| u == stripped) {
-                let col = Self::nick_color(stripped);
+            } else if buffer.users.iter().any(|u| u.nick == stripped_nick) {
+                let col = Self::nick_color(stripped_nick);
                 ui.label(egui::RichText::new(tok).color(col));
             } else {
                 // default
@@ -174,7 +240,7 @@ impl SlircApp {
         }
     }
 
-    pub fn clean_motd_line(line: &str) -> String {
+    pub fn clean_motd_line(&self, line: &str) -> String {
         // Many servers send MOTD lines with a leading ':-' or '- ' prefix for formatting.
         // Normalize those lines by removing leading punctuation and whitespace so they display
         // nicely in the UI, while still preserving decoration lines like '════'.
@@ -188,11 +254,33 @@ impl SlircApp {
         } else if s == "-" {
             s = "";
         }
-        s.to_string()
+            let mut s2 = s.to_string();
+            // If we didn't load a fallback font with good glyph coverage, replace
+            // common box drawing characters with ASCII equivalents to avoid box
+            // glyph placeholders.
+            if self.font_fallback.is_none() {
+                s2 = s2
+                    .replace('═', "-")
+                    .replace('─', "-")
+                    .replace('│', "|")
+                    .replace('║', "|")
+                    .replace('┌', "+")
+                    .replace('┐', "+")
+                    .replace('└', "+")
+                    .replace('┘', "+");
+            }
+            s2
     }
 
     fn collect_completions(&self, prefix: &str) -> Vec<String> {
         let mut matches: Vec<String> = Vec::new();
+        let mut search_prefix = prefix;
+        let mut keep_lead = "";
+        if prefix.starts_with('@') {
+            // Keep the '@' in the suggestion, but search without it
+            search_prefix = &prefix[1..];
+            keep_lead = "@";
+        }
         if prefix.starts_with('#') || prefix.starts_with('&') {
             // channel completions
             for b in &self.buffers_order {
@@ -204,8 +292,8 @@ impl SlircApp {
             // user completions from active buffer
             if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                 for u in &buffer.users {
-                    if u.starts_with(prefix) {
-                        matches.push(u.clone());
+                    if u.nick.starts_with(search_prefix) {
+                        matches.push(format!("{}{}", keep_lead, u.nick.clone()));
                     }
                 }
             }
@@ -379,10 +467,10 @@ impl SlircApp {
                 GuiEvent::NickChanged { old, new } => {
                     // Update user lists in all buffers where the old nick existed
                     for (buffer_name, buffer) in self.buffers.iter_mut() {
-                        if buffer.users.iter().any(|u| u == &old) {
+                        if buffer.users.iter().any(|u| u.nick == old) {
                             for user in buffer.users.iter_mut() {
-                                if user == &old {
-                                    *user = new.clone();
+                                if user.nick == old {
+                                    user.nick = new.clone();
                                 }
                             }
                             let ts = Local::now().format("%H:%M:%S").to_string();
@@ -425,9 +513,9 @@ impl SlircApp {
                     buffer.messages.push((ts.clone(), sender.clone(), text.clone()));
                     // Keep user list updated if a new nick speaks
                     if buffer_name.starts_with('#') || buffer_name.starts_with('&') {
-                        if !buffer.users.contains(&sender) {
-                            buffer.users.push(sender.clone());
-                            buffer.users.sort();
+                        if !buffer.users.iter().any(|u| u.nick == sender) {
+                            buffer.users.push(UserInfo { nick: sender.clone(), prefix: None });
+                            Self::sort_users(&mut buffer.users);
                         }
                     }
                     if !is_own_msg && buffer_name != active {
@@ -462,9 +550,9 @@ impl SlircApp {
                     let buffer = self.ensure_buffer(&channel);
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     buffer.messages.push((ts.clone(), "→".into(), format!("{} joined", nick)));
-                    if !buffer.users.contains(&nick) {
-                        buffer.users.push(nick.clone());
-                        buffer.users.sort();
+                    if !buffer.users.iter().any(|u| u.nick == nick) {
+                        buffer.users.push(UserInfo { nick: nick.clone(), prefix: None });
+                        Self::sort_users(&mut buffer.users);
                     }
                     if active != channel {
                         buffer.unread += 1;
@@ -477,7 +565,7 @@ impl SlircApp {
                     let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     buffer.messages.push((ts.clone(), "←".into(), format!("{} left{}", nick, msg)));
-                    buffer.users.retain(|u| u != &nick);
+                    buffer.users.retain(|u| u.nick != nick);
                     if active != channel {
                         buffer.unread += 1;
                     }
@@ -486,7 +574,7 @@ impl SlircApp {
                 GuiEvent::Motd(line) => {
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     // Clean up MOTD line formatting a bit for readability
-                    let cleaned = Self::clean_motd_line(&line);
+                    let cleaned = self.clean_motd_line(&line);
                     if cleaned.is_empty() {
                         self.system_log.push(format!("[{}] MOTD:", ts));
                     } else {
@@ -508,7 +596,22 @@ impl SlircApp {
                 GuiEvent::Names { channel, names } => {
                     let buffer = self.ensure_buffer(&channel);
                     buffer.users = names;
-                    buffer.users.sort();
+                    Self::sort_users(&mut buffer.users);
+                }
+                GuiEvent::UserMode { channel, nick, prefix, added } => {
+                    let buffer = self.ensure_buffer(&channel);
+                    // Find the user and update the prefix; if the user isn't present,
+                    // add them (some servers may send MODE before a NAMES refresh).
+                    if let Some(user) = buffer.users.iter_mut().find(|u| u.nick == nick) {
+                        if added {
+                            user.prefix = prefix;
+                        } else if user.prefix == prefix {
+                            user.prefix = None;
+                        }
+                    } else if added {
+                        buffer.users.push(UserInfo { nick: nick.clone(), prefix });
+                    }
+                    Self::sort_users(&mut buffer.users);
                 }
             }
         }
@@ -671,37 +774,7 @@ impl eframe::App for SlircApp {
                     }
                 });
             });
-        // Top panel: horizontal tabs for buffers
-        egui::TopBottomPanel::top("tabs_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                for name in self.buffers_order.clone() {
-                    let (unread, has_mention, _users_len, selected) = if let Some(b) = self.buffers.get(&name) {
-                        (b.unread, b.has_mention, b.users.len(), self.active_buffer == name)
-                    } else {
-                        (0, false, 0, false)
-                    };
-
-                    let mut tab_label = name.clone();
-                    if unread > 0 { tab_label = format!("{} ({})", name, unread); }
-                    let rich = if has_mention {
-                        egui::RichText::new(tab_label).color(egui::Color32::LIGHT_RED).strong()
-                    } else if selected {
-                        egui::RichText::new(tab_label).color(egui::Color32::WHITE).strong()
-                    } else {
-                        egui::RichText::new(tab_label).color(egui::Color32::LIGHT_GRAY)
-                    };
-
-                    if ui.selectable_label(selected, rich).clicked() {
-                        self.active_buffer = name.clone();
-                        if let Some(mut_b) = self.buffers.get_mut(&name) {
-                            mut_b.unread = 0;
-                            mut_b.has_mention = false;
-                        }
-                    }
-                    ui.separator();
-                }
-            });
-        });
+        // (Removed top horizontal buffer tabs — left navigation is the single source of truth.)
 
         // Right panel: User list (for channels)
         if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
@@ -715,7 +788,8 @@ impl eframe::App for SlircApp {
                     if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for user in &buffer.users {
-                                ui.label(user);
+                                let prefix = user.prefix.map(|c| c.to_string()).unwrap_or_else(|| String::new());
+                                ui.label(format!("{}{}", prefix, user.nick));
                             }
                         });
                     }
@@ -865,38 +939,17 @@ impl eframe::App for SlircApp {
                     } else if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                         for (ts, sender, text) in &buffer.messages {
                             let mention = text.contains(&self.nickname_input);
-                            if sender == &self.nickname_input {
-                                // Align own messages to the right
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
+                                ui.label(egui::RichText::new(format!("<{}>", sender)).color(egui::Color32::LIGHT_BLUE).strong());
+                                if sender == &self.nickname_input {
                                     ui.label(egui::RichText::new(text).color(egui::Color32::from_rgb(80, 200, 120)));
-                                    ui.label(
-                                        egui::RichText::new(format!("<{}>", sender))
-                                            .color(egui::Color32::LIGHT_BLUE)
-                                            .strong(),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(format!("[{}]", ts))
-                                        .color(egui::Color32::LIGHT_GRAY),
-                                    );
-                                });
-                            } else {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(format!("[{}]", ts))
-                                            .color(egui::Color32::LIGHT_GRAY),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(format!("<{}>", sender))
-                                            .color(egui::Color32::LIGHT_BLUE)
-                                            .strong(),
-                                    );
-                                    if mention {
-                                        self.render_message_text(ui, buffer, text, Some(egui::Color32::LIGHT_RED));
-                                    } else {
-                                        self.render_message_text(ui, buffer, text, None);
-                                    }
-                                });
-                            }
+                                } else if mention {
+                                    self.render_message_text(ui, buffer, text, Some(egui::Color32::LIGHT_RED));
+                                } else {
+                                    self.render_message_text(ui, buffer, text, None);
+                                }
+                            });
                         }
                     }
                 });

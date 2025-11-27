@@ -41,13 +41,41 @@ mod tests {
 
     #[test]
     fn test_clean_motd() {
-        assert_eq!(SlircApp::clean_motd_line("-"), "");
-        assert_eq!(SlircApp::clean_motd_line(":-"), "");
-        assert_eq!(SlircApp::clean_motd_line(":- "), "");
-        assert_eq!(SlircApp::clean_motd_line(":- Hello world"), "Hello world");
-        assert_eq!(SlircApp::clean_motd_line("- ═════════"), "═════════");
-        assert_eq!(SlircApp::clean_motd_line("Hello"), "Hello");
-        assert_eq!(SlircApp::clean_motd_line(" - Hello"), "Hello");
+        let (action_tx, _action_rx) = unbounded::<BackendAction>();
+        let (event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: false,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "System".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+        };
+        assert_eq!(app.clean_motd_line("-"), "");
+        assert_eq!(app.clean_motd_line(":-"), "");
+        assert_eq!(app.clean_motd_line(":- "), "");
+        assert_eq!(app.clean_motd_line(":- Hello world"), "Hello world");
+        assert_eq!(app.clean_motd_line("- ═════════"), "---------"); // replaced since no font fallback
+        assert_eq!(app.clean_motd_line("Hello"), "Hello");
+        assert_eq!(app.clean_motd_line(" - Hello"), "Hello");
     }
 
     #[test]
@@ -78,6 +106,7 @@ mod tests {
             completion_target_channel: false,
             last_input_text: String::new(),
             theme: String::from("dark"),
+            font_fallback: None,
         };
         app.buffers.insert("System".into(), Buffer::default());
 
@@ -86,5 +115,101 @@ mod tests {
         
         app.process_events();
         assert!(app.system_log.iter().any(|l| l.contains("MOTD: Welcome to the server")));
+    }
+
+    #[test]
+    fn test_names_event_populates_users() {
+        let (action_tx, _action_rx) = unbounded::<BackendAction>();
+        let (event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: false,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "System".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+        };
+        app.buffers.insert("System".into(), Buffer::default());
+
+        let names = vec![
+            crate::protocol::UserInfo { nick: "admin".into(), prefix: Some('@') },
+            crate::protocol::UserInfo { nick: "foo".into(), prefix: None },
+            crate::protocol::UserInfo { nick: "bar".into(), prefix: Some('+') },
+        ];
+        let _ = event_tx.send(GuiEvent::Names { channel: "#test".into(), names });
+        app.process_events();
+        // Buffer should be created and populated
+        assert!(app.buffers.contains_key("#test"));
+        let buf = app.buffers.get("#test").unwrap();
+        assert_eq!(buf.users.len(), 3);
+        assert!(buf.users.iter().any(|u| u.nick == "admin" && u.prefix == Some('@')));
+        assert!(buf.users.iter().any(|u| u.nick == "bar" && u.prefix == Some('+')));
+    }
+
+    #[test]
+    fn test_user_mode_event_updates_prefix() {
+        use crate::protocol::UserInfo as PUser;
+        let (action_tx, _action_rx) = unbounded::<BackendAction>();
+        let (event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: false,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "System".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+        };
+        app.buffers.insert("System".into(), Buffer::default());
+        // Create a channel buffer with one user
+        let mut buf = Buffer::default();
+        buf.users.push(PUser { nick: "alice".into(), prefix: None });
+        app.buffers.insert("#test".into(), buf);
+
+        let _ = event_tx.send(GuiEvent::UserMode { channel: "#test".into(), nick: "alice".into(), prefix: Some('@'), added: true });
+        app.process_events();
+        let b = app.buffers.get("#test").unwrap();
+        assert!(b.users.iter().any(|u| u.nick == "alice" && u.prefix == Some('@')));
+
+        // Now remove the op
+        let _ = event_tx.send(GuiEvent::UserMode { channel: "#test".into(), nick: "alice".into(), prefix: Some('@'), added: false });
+        app.process_events();
+        let b2 = app.buffers.get("#test").unwrap();
+        assert!(b2.users.iter().any(|u| u.nick == "alice" && u.prefix.is_none()));
     }
 }

@@ -4,8 +4,9 @@ use tokio::time::timeout;
 use std::time::Duration;
 use crossbeam_channel::{Receiver, Sender};
 use slirc_proto::{Command, Message, Transport};
+use slirc_proto::mode::{ChannelMode, Mode};
 
-use crate::protocol::{BackendAction, GuiEvent};
+use crate::protocol::{BackendAction, GuiEvent, UserInfo};
 
 pub fn run_backend(
     action_rx: Receiver<BackendAction>,
@@ -170,13 +171,16 @@ pub fn run_backend(
                             // RPL_NAMREPLY (353)
                             Command::Response(code, args) if code.code() == 353 => {
                                 if args.len() >= 4 {
-                                    let channel = args[2].clone();
-                                    let names: Vec<String> = args[3]
-                                        .split_whitespace()
-                                        .map(|s| s.trim_start_matches(&['@', '+', '%', '&', '~'][..]).to_string())
-                                        .collect();
-                                    let _ = event_tx.send(GuiEvent::Names { channel, names });
-                                }
+                                        let channel = args[2].clone();
+                                        let mut names: Vec<UserInfo> = Vec::new();
+                                        for s in args[3].split_whitespace() {
+                                            let mut chars = s.chars();
+                                            let prefix = chars.next().filter(|c| matches!(c, '@' | '+' | '%' | '&' | '~'));
+                                            let nick = if prefix.is_some() { chars.as_str().to_string() } else { s.to_string() };
+                                            names.push(UserInfo { nick, prefix });
+                                        }
+                                        let _ = event_tx.send(GuiEvent::Names { channel, names });
+                                    }
                             }
                             
                             // RPL_MOTD (372) and RPL_MOTDSTART (375)
@@ -253,6 +257,45 @@ pub fn run_backend(
                                 let _ = event_tx.send(GuiEvent::Error(msg.clone()));
                             }
                             
+                            // Channel mode changes (e.g. +o/-o): update UI user prefixes
+                            Command::ChannelMODE(channel, modes) => {
+                                for m in modes {
+                                    match m {
+                                        Mode::Plus(ChannelMode::Oper, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('@'), added: true });
+                                        }
+                                        Mode::Minus(ChannelMode::Oper, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('@'), added: false });
+                                        }
+                                        Mode::Plus(ChannelMode::Voice, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('+'), added: true });
+                                        }
+                                        Mode::Minus(ChannelMode::Voice, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('+'), added: false });
+                                        }
+                                        Mode::Plus(ChannelMode::Halfop, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('%'), added: true });
+                                        }
+                                        Mode::Minus(ChannelMode::Halfop, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('%'), added: false });
+                                        }
+                                        Mode::Plus(ChannelMode::Admin, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('&'), added: true });
+                                        }
+                                        Mode::Minus(ChannelMode::Admin, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('&'), added: false });
+                                        }
+                                        Mode::Plus(ChannelMode::Founder, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('~'), added: true });
+                                        }
+                                        Mode::Minus(ChannelMode::Founder, Some(nick)) => {
+                                            let _ = event_tx.send(GuiEvent::UserMode { channel: channel.clone(), nick: nick.clone(), prefix: Some('~'), added: false });
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+
                             // For other messages, we might want to log them if they are interesting
                             _ => {
                                 // Optional: Log unhandled messages to system log for debugging
