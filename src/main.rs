@@ -892,7 +892,11 @@ impl SlircApp {
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     // Clean up MOTD line formatting a bit for readability
                     let cleaned = Self::clean_motd_line(&line);
-                    self.system_log.push(format!("[{}] MOTD: {}", ts, cleaned));
+                    if cleaned.is_empty() {
+                        self.system_log.push(format!("[{}] MOTD:", ts));
+                    } else {
+                        self.system_log.push(format!("[{}] MOTD: {}", ts, cleaned));
+                    }
                 }
                 
                 GuiEvent::Topic { channel, topic } => {
