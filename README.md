@@ -13,7 +13,7 @@ A native IRC client built with [egui](https://github.com/emilk/egui) and the [sl
 - **Topic display** - Shows channel topics
 - **Raw message logging** - Full IRC protocol visibility in System buffer
 - **PING/PONG handling** - Automatic keep-alive responses
- - **Command input** - Supports /join, /part, /msg, /nick, /quit, /me
+- **Command input** - Supports /join, /part, /msg, /nick, /quit, /me, /whois, /topic, /kick
  - **Timestamps** - Messages are displayed with local timestamps
  - **Input history** - Use Up/Down to navigate previously sent messages
  - **Channel tabs (left)** - Buffers are shown as vertical tabs with unread badges
@@ -135,7 +135,7 @@ cargo run --release
 2. **Wait for registration**: Watch the System buffer for "✓ Connected and registered!"
 3. **Join channels**: Enter channel name (default: `#straylight`) and click "+"
     - You can also join using `/join #channel` via the input
-4. **Chat**: Select a channel buffer, type messages, press Enter or click "Send"
+4. **Chat**: Select a channel buffer, type messages and press Enter to send
     - Use `/join <channel>` to join a channel (e.g., `/join #rust`)
     - Use `/part <channel> [message]` to leave a channel
     - Use `/msg <target> <message>` to send a private message
@@ -148,9 +148,7 @@ cargo run --release
 
 ### UI & Look-and-feel Improvements
 
-- **Channel tabs**: Buffer list on the left is now a vertical tab list, showing unread counts and a small `x` button to leave a channel.
-- **Unread and Mentions**: Tabs show an unread count; messages mentioning your nick are highlighted in red and mark the tab as `mention`.
-- **Your messages**: Outgoing messages are aligned to the right and colored to help differentiate from other users.
+- Your messages: Outgoing messages are left-aligned and colored to help differentiate from other users.
 
 ### Quick Checks
 
