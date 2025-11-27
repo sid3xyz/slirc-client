@@ -124,6 +124,12 @@ cargo run --release
 2. **Wait for registration**: Watch the System buffer for "✓ Connected and registered!"
 3. **Join channels**: Enter channel name (default: `#straylight`) and click "+"
 4. **Chat**: Select a channel buffer, type messages, press Enter or click "Send"
+    - Use `/join <channel>` to join a channel (e.g., `/join #rust`)
+    - Use `/part <channel> [message]` to leave a channel
+    - Use `/msg <target> <message>` to send a private message
+    - Use `/nick <newnick>` to change your nickname
+    - Use `/me <action>` to send a CTCP ACTION (e.g., `/me waves`)
+    - Use `/quit [message]` to quit the server gracefully
 5. **Switch buffers**: Click buffer names in the left panel
 6. **Disconnect**: Click "Disconnect" button
 
