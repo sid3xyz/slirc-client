@@ -664,6 +664,40 @@ impl eframe::App for SlircApp {
         // Process network events
         self.process_events();
         
+        // Global keyboard shortcuts (work even when input doesn't have focus)
+        ctx.input(|i| {
+            // Ctrl+N: Next channel
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::N) {
+                if let Some(current_idx) = self.buffers_order.iter().position(|b| b == &self.active_buffer) {
+                    let next_idx = (current_idx + 1) % self.buffers_order.len();
+                    if let Some(next_buffer) = self.buffers_order.get(next_idx) {
+                        self.active_buffer = next_buffer.clone();
+                        if let Some(buffer) = self.buffers.get_mut(next_buffer) {
+                            buffer.unread = 0;
+                            buffer.has_mention = false;
+                        }
+                    }
+                }
+            }
+            // Ctrl+K: Previous channel (or Ctrl+P for "previous")
+            if i.modifiers.ctrl && (i.key_pressed(egui::Key::K) || i.key_pressed(egui::Key::P)) {
+                if let Some(current_idx) = self.buffers_order.iter().position(|b| b == &self.active_buffer) {
+                    let prev_idx = if current_idx == 0 {
+                        self.buffers_order.len() - 1
+                    } else {
+                        current_idx - 1
+                    };
+                    if let Some(prev_buffer) = self.buffers_order.get(prev_idx) {
+                        self.active_buffer = prev_buffer.clone();
+                        if let Some(buffer) = self.buffers.get_mut(prev_buffer) {
+                            buffer.unread = 0;
+                            buffer.has_mention = false;
+                        }
+                    }
+                }
+            }
+        });
+        
         // Request repaint to keep checking for events
         ctx.request_repaint_after(Duration::from_millis(100));
         
