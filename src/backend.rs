@@ -105,6 +105,24 @@ pub fn run_backend(
                             let _ = event_tx.send(GuiEvent::Error("Not connected".into()));
                         }
                     }
+                    BackendAction::Whois(target) => {
+                        if let Some(ref mut t) = transport {
+                            let whois = Message::from(slirc_proto::command::Command::WHOIS(None, target.clone()));
+                            if let Err(e) = t.write_message(&whois).await {
+                                let _ = event_tx.send(GuiEvent::Error(format!("Failed to send WHOIS: {}", e)));
+                            }
+                        } else {
+                            let _ = event_tx.send(GuiEvent::Error("Not connected".into()));
+                        }
+                    }
+                    BackendAction::SetTopic { channel, topic } => {
+                        if let Some(ref mut t) = transport {
+                            let topic_cmd = Message::from(slirc_proto::command::Command::TOPIC(channel.clone(), Some(topic.clone())));
+                            if let Err(e) = t.write_message(&topic_cmd).await {
+                                let _ = event_tx.send(GuiEvent::Error(format!("Failed to set topic: {}", e)));
+                            }
+                        }
+                    }
                     BackendAction::Quit(reason) => {
                         if let Some(ref mut t) = transport {
                             let quit_msg = if let Some(r) = reason {

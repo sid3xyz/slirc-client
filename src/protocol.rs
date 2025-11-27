@@ -21,6 +21,10 @@ pub enum BackendAction {
     Quit(Option<String>),
     /// Send a message to a target (channel or user)
     SendMessage { target: String, text: String },
+    /// Set the topic for a channel
+    SetTopic { channel: String, topic: String },
+    /// Request WHOIS information for a nick
+    Whois(String),
 }
 
 /// Events sent from the Backend to the UI

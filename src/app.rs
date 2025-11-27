@@ -39,6 +39,8 @@ pub struct SlircApp {
     pub context_menu_visible: bool,
     pub context_menu_target: Option<String>,
     pub open_windows: HashSet<String>,
+    // topic editor dialog state: which channel (if any) we're currently editing
+    pub topic_editor_open: Option<String>,
     // Tab completion state
     pub completions: Vec<String>,
     pub completion_index: Option<usize>,
@@ -138,6 +140,7 @@ impl SlircApp {
             open_windows: HashSet::new(),
             buffers_order: vec!["System".into()],
             font_fallback: chosen_font,
+            topic_editor_open: None,
         };
         
         // Create the System buffer
@@ -789,7 +792,11 @@ impl eframe::App for SlircApp {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for user in &buffer.users {
                                 let prefix = user.prefix.map(|c| c.to_string()).unwrap_or_else(|| String::new());
-                                ui.label(format!("{}{}", prefix, user.nick));
+                                let label = ui.selectable_label(false, format!("{}{}", prefix, user.nick));
+                                if label.secondary_clicked() {
+                                    self.context_menu_visible = true;
+                                    self.context_menu_target = Some(format!("user:{}", user.nick));
+                                }
                             }
                         });
                     }
@@ -923,6 +930,16 @@ impl eframe::App for SlircApp {
             if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                 if !buffer.topic.is_empty() {
                     // (topic already displayed in header)
+                    // Show an edit button for ops
+                    let is_op = buffer.users.iter().any(|u| u.nick == self.nickname_input && Self::prefix_rank(u.prefix) >= 3);
+                    if is_op {
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Edit Topic").clicked() {
+                                self.topic_editor_open = Some(self.active_buffer.clone());
+                            }
+                            ui.label(egui::RichText::new("Double-click or use 'Edit Topic' to change the topic").color(egui::Color32::LIGHT_GRAY));
+                        });
+                    }
                 }
             }
             
@@ -958,25 +975,47 @@ impl eframe::App for SlircApp {
         // Context menu popup (as a floating window)
         if self.context_menu_visible {
             if let Some(target) = self.context_menu_target.clone() {
-                egui::Window::new(format!("Actions: {}", target))
-                    .resizable(false)
-                    .collapsible(false)
-                    .show(ctx, |ui| {
-                        if ui.button("Part").clicked() {
-                            let _ = self.action_tx.send(BackendAction::Part { channel: target.clone(), message: None });
-                            self.context_menu_visible = false;
-                        }
-                        if ui.button("Close").clicked() {
-                            self.buffers.remove(&target);
-                            self.buffers_order.retain(|b| b != &target);
-                            if self.active_buffer == target { self.active_buffer = "System".into(); }
-                            self.context_menu_visible = false;
-                        }
-                        if ui.button("Open in new window").clicked() {
-                            self.open_windows.insert(target.clone());
-                            self.context_menu_visible = false;
-                        }
-                    });
+                // If the target starts with "user:", this is a user context menu
+                if let Some(user) = target.strip_prefix("user:") {
+                    egui::Window::new(format!("User: {}", user))
+                        .resizable(false)
+                        .collapsible(false)
+                        .show(ctx, |ui| {
+                            if ui.button("Query (PM)").clicked() {
+                                // Create or switch to private message buffer
+                                if !self.buffers.contains_key(user) {
+                                    self.buffers.insert(user.to_string(), Buffer::default());
+                                    self.buffers_order.push(user.to_string());
+                                }
+                                self.active_buffer = user.to_string();
+                                self.context_menu_visible = false;
+                            }
+                            if ui.button("Whois").clicked() {
+                                let _ = self.action_tx.send(BackendAction::Whois(user.to_string()));
+                                self.context_menu_visible = false;
+                            }
+                        });
+                } else {
+                    egui::Window::new(format!("Actions: {}", target))
+                        .resizable(false)
+                        .collapsible(false)
+                        .show(ctx, |ui| {
+                            if ui.button("Part").clicked() {
+                                let _ = self.action_tx.send(BackendAction::Part { channel: target.clone(), message: None });
+                                self.context_menu_visible = false;
+                            }
+                            if ui.button("Close").clicked() {
+                                self.buffers.remove(&target);
+                                self.buffers_order.retain(|b| b != &target);
+                                if self.active_buffer == target { self.active_buffer = "System".into(); }
+                                self.context_menu_visible = false;
+                            }
+                            if ui.button("Open in new window").clicked() {
+                                self.open_windows.insert(target.clone());
+                                self.context_menu_visible = false;
+                            }
+                        });
+                }
             }
         }
 
@@ -1004,6 +1043,34 @@ impl eframe::App for SlircApp {
                     }
                 });
             if !open { self.open_windows.remove(&open_name); }
+        }
+        // Topic editor window (if open)
+        if let Some(channel) = self.topic_editor_open.clone() {
+            let mut open = true;
+            // Clone the topic string for editing to avoid borrowing self while rendering UI
+            let initial_topic = self.buffers.get(&channel).map(|b| b.topic.clone()).unwrap_or_default();
+            let mut new_topic = initial_topic.clone();
+            egui::Window::new(format!("Edit Topic: {}", channel))
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.label("Edit the channel topic:");
+                    let response = ui.add(egui::TextEdit::multiline(&mut new_topic).desired_rows(3));
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            if !new_topic.is_empty() {
+                                let _ = self.action_tx.send(BackendAction::SetTopic { channel: channel.clone(), topic: new_topic.clone() });
+                            }
+                            self.topic_editor_open = None;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.topic_editor_open = None;
+                        }
+                    });
+                });
+            if !open {
+                self.topic_editor_open = None;
+            }
         }
     }
 }
