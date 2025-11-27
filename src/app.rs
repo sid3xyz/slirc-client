@@ -612,6 +612,23 @@ impl SlircApp {
                     }
                 }
                 
+                GuiEvent::UserQuit { nick, message } => {
+                    // Remove the user from all channels and add quit message
+                    let active = self.active_buffer.clone();
+                    let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    
+                    for (channel_name, buffer) in self.buffers.iter_mut() {
+                        if buffer.users.iter().any(|u| u.nick == nick) {
+                            buffer.messages.push((ts.clone(), "⇐".into(), format!("{} quit{}", nick, msg)));
+                            buffer.users.retain(|u| u.nick != nick);
+                            if active != *channel_name {
+                                buffer.unread += 1;
+                            }
+                        }
+                    }
+                }
+                
                 GuiEvent::Motd(line) => {
                     let ts = Local::now().format("%H:%M:%S").to_string();
                     // Clean up MOTD line formatting a bit for readability

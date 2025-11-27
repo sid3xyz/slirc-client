@@ -54,6 +54,8 @@ pub enum GuiEvent {
     UserJoined { channel: String, nick: String },
     /// Someone left a channel we're in
     UserParted { channel: String, nick: String, message: Option<String> },
+    /// A user quit from the server (affects all channels they were in)
+    UserQuit { nick: String, message: Option<String> },
     /// A user mode was changed in a channel (e.g. +o/-o) — used to update
     /// the nickname prefix in the UI.
     UserMode { channel: String, nick: String, prefix: Option<char>, added: bool },

@@ -3,7 +3,7 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 use std::time::Duration;
 use crossbeam_channel::{Receiver, Sender};
-use slirc_proto::{Command, Message, Transport};
+use slirc_proto::{Command, Message, Transport, Prefix};
 use slirc_proto::mode::{ChannelMode, Mode};
 
 use crate::protocol::{BackendAction, GuiEvent, UserInfo};
@@ -287,9 +287,14 @@ pub fn run_backend(
                                 let _ = event_tx.send(GuiEvent::NickChanged { old: oldnick.clone(), new: newnick.clone() });
                             }
                             
-                            // QUIT - could update user lists
-                            Command::QUIT(_) => {
-                                // We could track this, but for simplicity we'll skip it
+                            // QUIT - user left the server
+                            Command::QUIT(msg) => {
+                                if let Some(Prefix::Nickname(nick, _, _)) = &message.prefix {
+                                    let _ = event_tx.send(GuiEvent::UserQuit { 
+                                        nick: nick.to_string(), 
+                                        message: msg.clone() 
+                                    });
+                                }
                             }
                             
                             // ERROR from server
