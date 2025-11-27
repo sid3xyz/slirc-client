@@ -1006,17 +1006,30 @@ impl eframe::App for SlircApp {
                     } else if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                         for (ts, sender, text) in &buffer.messages {
                             let mention = text.contains(&self.nickname_input);
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
-                                ui.label(egui::RichText::new(format!("<{}>", sender)).color(egui::Color32::LIGHT_BLUE).strong());
-                                if sender == &self.nickname_input {
-                                    ui.label(egui::RichText::new(text).color(egui::Color32::from_rgb(80, 200, 120)));
-                                } else if mention {
-                                    self.render_message_text(ui, buffer, text, Some(egui::Color32::LIGHT_RED));
-                                } else {
-                                    self.render_message_text(ui, buffer, text, None);
-                                }
-                            });
+                            
+                            // Check if this is a CTCP ACTION message
+                            if text.starts_with("\x01ACTION ") && text.ends_with('\x01') {
+                                // Extract action text (remove \x01ACTION  and trailing \x01)
+                                let action = &text[8..text.len()-1];
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
+                                    ui.label(egui::RichText::new("*").color(egui::Color32::from_rgb(255, 150, 0)));
+                                    ui.label(egui::RichText::new(sender).color(Self::nick_color(sender)));
+                                    ui.label(egui::RichText::new(action).color(egui::Color32::from_rgb(255, 150, 0)).italics());
+                                });
+                            } else {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
+                                    ui.label(egui::RichText::new(format!("<{}>", sender)).color(egui::Color32::LIGHT_BLUE).strong());
+                                    if sender == &self.nickname_input {
+                                        ui.label(egui::RichText::new(text).color(egui::Color32::from_rgb(80, 200, 120)));
+                                    } else if mention {
+                                        self.render_message_text(ui, buffer, text, Some(egui::Color32::LIGHT_RED));
+                                    } else {
+                                        self.render_message_text(ui, buffer, text, None);
+                                    }
+                                });
+                            }
                         }
                     }
                 });
@@ -1119,11 +1132,23 @@ impl eframe::App for SlircApp {
                     if let Some(buffer) = self.buffers.get(&open_name) {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for (ts, sender, text) in &buffer.messages {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
-                                    ui.label(egui::RichText::new(format!("<{}>", sender)).color(egui::Color32::LIGHT_BLUE).strong());
-                                    self.render_message_text(ui, buffer, text, None);
-                                });
+                                // Check if this is a CTCP ACTION message
+                                if text.starts_with("\x01ACTION ") && text.ends_with('\x01') {
+                                    // Extract action text (remove \x01ACTION  and trailing \x01)
+                                    let action = &text[8..text.len()-1];
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
+                                        ui.label(egui::RichText::new("*").color(egui::Color32::from_rgb(255, 150, 0)));
+                                        ui.label(egui::RichText::new(sender).color(Self::nick_color(sender)));
+                                        ui.label(egui::RichText::new(action).color(egui::Color32::from_rgb(255, 150, 0)).italics());
+                                    });
+                                } else {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
+                                        ui.label(egui::RichText::new(format!("<{}>", sender)).color(egui::Color32::LIGHT_BLUE).strong());
+                                        self.render_message_text(ui, buffer, text, None);
+                                    });
+                                }
                             }
                         });
                     }

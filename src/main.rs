@@ -393,4 +393,48 @@ mod tests {
             _ => panic!("Expected Kick action"),
         }
     }
+
+    #[test]
+    fn test_me_command_sends_action_ctcp() {
+        let (action_tx, action_rx) = unbounded::<BackendAction>();
+        let (_event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut app = SlircApp {
+            server_input: DEFAULT_SERVER.into(),
+            nickname_input: "tester".into(),
+            is_connected: true,
+            action_tx,
+            event_rx,
+            buffers: HashMap::new(),
+            buffers_order: vec!["System".into()],
+            active_buffer: "#test".into(),
+            channel_input: DEFAULT_CHANNEL.into(),
+            message_input: String::new(),
+            system_log: Vec::new(),
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+            theme: String::from("dark"),
+            font_fallback: None,
+            topic_editor_open: None,
+        };
+        app.buffers.insert("#test".into(), Buffer::default());
+        app.message_input = String::from("/me waves hello");
+        assert!(app.handle_user_command());
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::SendMessage { target, text } => {
+                assert_eq!(target, "#test");
+                assert_eq!(text, "\x01ACTION waves hello\x01");
+            }
+            _ => panic!("Expected SendMessage action with CTCP ACTION"),
+        }
+    }
 }
