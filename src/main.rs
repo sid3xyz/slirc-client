@@ -5,13 +5,19 @@
 //! - Backend thread: runs a Tokio runtime for async network I/O
 //! - Communication via crossbeam channels (lock-free, sync-safe)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::time::Duration;
 use chrono::Local;
+use serde::{Serialize, Deserialize};
+use directories::ProjectDirs;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
+use eframe::egui::Color32;
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
 use tokio::time::timeout;
@@ -393,14 +399,61 @@ struct SlircApp {
     history: Vec<String>,
     history_pos: Option<usize>,
     history_saved_input: Option<String>,
+    // Context menus and floating windows
+    context_menu_visible: bool,
+    context_menu_target: Option<String>,
+    open_windows: HashSet<String>,
+    // Tab completion state
+    completions: Vec<String>,
+    completion_index: Option<usize>,
+    completion_prefix: Option<String>,
+    completion_target_channel: bool,
+    last_input_text: String,
+    theme: String,
 }
 
 // Default configuration
 const DEFAULT_SERVER: &str = "irc.slirc.net:6667";
 const DEFAULT_CHANNEL: &str = "#straylight";
 
+#[derive(Serialize, Deserialize, Default)]
+struct Settings {
+    pub server: String,
+    pub nick: String,
+    pub default_channel: String,
+    pub history: Vec<String>,
+    pub theme: String,
+}
+
+fn settings_path() -> Option<PathBuf> {
+    if let Some(proj) = ProjectDirs::from("com", "sid3xyz", "slirc-client") {
+        let dir = proj.config_dir();
+        if let Err(e) = fs::create_dir_all(dir) {
+            eprintln!("Failed to create config dir: {}", e);
+            return None;
+        }
+        return Some(dir.join("settings.json"));
+    }
+    None
+}
+
+fn load_settings() -> Option<Settings> {
+    let path = settings_path()?;
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn save_settings(settings: &Settings) -> std::io::Result<()> {
+    if let Some(path) = settings_path() {
+        let mut file = fs::File::create(path)?;
+        let data = serde_json::to_string_pretty(settings).unwrap();
+        file.write_all(data.as_bytes())?;
+    }
+    Ok(())
+}
+
 impl SlircApp {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Create channels for UI <-> Backend
         let (action_tx, action_rx) = unbounded::<BackendAction>();
         let (event_tx, event_rx) = unbounded::<GuiEvent>();
@@ -409,6 +462,14 @@ impl SlircApp {
         thread::spawn(move || {
             run_backend(action_rx, event_tx);
         });
+        // Try to load persisted settings and apply theme in creation context
+        let settings = load_settings();
+        if let Some(s) = &settings {
+            match s.theme.as_str() {
+                "light" => cc.egui_ctx.set_visuals(egui::Visuals::light()),
+                _ => cc.egui_ctx.set_visuals(egui::Visuals::dark()),
+            }
+        }
         
         let mut app = Self {
             server_input: DEFAULT_SERVER.into(),
@@ -427,12 +488,28 @@ impl SlircApp {
             history: Vec::new(),
             history_pos: None,
             history_saved_input: None,
+            completions: Vec::new(),
+            completion_index: None,
+            completion_prefix: None,
+            completion_target_channel: false,
+            last_input_text: String::new(),
+                theme: "dark".into(), // Default theme
+            context_menu_visible: false,
+            context_menu_target: None,
+            open_windows: HashSet::new(),
             buffers_order: vec!["System".into()],
         };
         
         // Create the System buffer
         app.buffers.insert("System".into(), Buffer::default());
-        
+        // Restore settings if present
+        if let Some(s) = settings {
+            if !s.server.is_empty() { app.server_input = s.server; }
+            if !s.nick.is_empty() { app.nickname_input = s.nick; }
+            if !s.history.is_empty() { app.history = s.history; }
+            if !s.default_channel.is_empty() { app.channel_input = s.default_channel; }
+            if !s.theme.is_empty() { app.theme = s.theme; }
+        }
         app
     }
 
@@ -445,6 +522,148 @@ impl SlircApp {
             }
         }
         self.buffers.get_mut(name).unwrap()
+    }
+
+    fn nick_color(nick: &str) -> Color32 {
+        const COLORS: [Color32; 12] = [
+            Color32::from_rgb(0xFF, 0x66, 0x66),
+            Color32::from_rgb(0x66, 0xCC, 0xFF),
+            Color32::from_rgb(0xFF, 0xCC, 0x66),
+            Color32::from_rgb(0x99, 0xCC, 0x99),
+            Color32::from_rgb(0xCC, 0x99, 0xFF),
+            Color32::from_rgb(0xFF, 0x99, 0xCC),
+            Color32::from_rgb(0x66, 0x99, 0xFF),
+            Color32::from_rgb(0xFF, 0x99, 0x66),
+            Color32::from_rgb(0x99, 0xFF, 0x99),
+            Color32::from_rgb(0xFF, 0xCC, 0x99),
+            Color32::from_rgb(0xCC, 0xFF, 0xFF),
+            Color32::from_rgb(0xCC, 0xCC, 0xFF),
+        ];
+        let mut hash: u64 = 1469598103934665603u64;
+        for b in nick.as_bytes() {
+            hash ^= *b as u64;
+            hash = hash.wrapping_mul(1099511628211u64);
+        }
+        let idx = (hash as usize) % COLORS.len();
+        COLORS[idx]
+    }
+
+    fn render_message_text(&self, ui: &mut egui::Ui, buffer: &Buffer, text: &str, accent: Option<Color32>) {
+        // tokenize by whitespace and color tokens: nicks, emotes (:emote:), urls
+        use regex::Regex;
+        let url_re = Regex::new(r"^(https?://|www\.)[\w\-\.\/~%&=:+?#]+$").unwrap();
+        let emote_re = Regex::new(r"^:([a-zA-Z0-9_]+):$").unwrap();
+        let tokens: Vec<&str> = text.split_whitespace().collect();
+        for (i, &tok) in tokens.iter().enumerate() {
+            if i > 0 { ui.label(" "); }
+            let stripped = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '@');
+            if let Some(color) = accent {
+                if url_re.is_match(tok) {
+                    ui.hyperlink_to(tok, tok);
+                } else if emote_re.is_match(tok) {
+                    ui.label(egui::RichText::new(tok).color(color).italics());
+                } else {
+                    ui.label(egui::RichText::new(tok).color(color));
+                }
+            } else if url_re.is_match(tok) {
+                ui.hyperlink_to(tok, tok);
+            } else if emote_re.is_match(tok) {
+                ui.label(egui::RichText::new(tok).color(egui::Color32::from_rgb(255, 205, 0)).italics());
+            } else if buffer.users.iter().any(|u| u == stripped) {
+                let col = Self::nick_color(stripped);
+                ui.label(egui::RichText::new(tok).color(col));
+            } else {
+                // default
+                ui.label(tok);
+            }
+        }
+    }
+
+    fn clean_motd_line(line: &str) -> String {
+        // Many servers send MOTD lines with a leading ':-' or '- ' prefix for formatting.
+        // Normalize those lines by removing leading punctuation and whitespace so they display
+        // nicely in the UI, while still preserving decoration lines like '════'.
+        let mut s = line.trim_start();
+        if let Some(rest) = s.strip_prefix(":- ") {
+            s = rest.trim_start();
+        } else if let Some(rest) = s.strip_prefix(":-") {
+            s = rest.trim_start();
+        } else if let Some(rest) = s.strip_prefix("- ") {
+            s = rest.trim_start();
+        } else if s == "-" {
+            s = "";
+        }
+        s.to_string()
+    }
+
+    fn collect_completions(&self, prefix: &str) -> Vec<String> {
+        let mut matches: Vec<String> = Vec::new();
+        if prefix.starts_with('#') || prefix.starts_with('&') {
+            // channel completions
+            for b in &self.buffers_order {
+                if b.starts_with(prefix) {
+                    matches.push(b.clone());
+                }
+            }
+        } else {
+            // user completions from active buffer
+            if let Some(buffer) = self.buffers.get(&self.active_buffer) {
+                for u in &buffer.users {
+                    if u.starts_with(prefix) {
+                        matches.push(u.clone());
+                    }
+                }
+            }
+            // also add channel names for messages starting with '#'
+            for b in &self.buffers_order {
+                if b.starts_with(prefix) {
+                    matches.push(b.clone());
+                }
+            }
+        }
+        matches.sort();
+        matches.dedup();
+        matches
+    }
+
+    fn apply_completion(&mut self, completion: &str, last_word_start: usize, _last_word_end: usize) {
+        // Replace last token in message_input with completion
+        // If this was the first token in the message, add a trailing ': ' similar to HexChat
+        let is_first_token = self.message_input[..last_word_start].trim().is_empty();
+        let suffix = if is_first_token { ": " } else { " " };
+        let before = &self.message_input[..last_word_start];
+        self.message_input = format!("{}{}{}", before, completion, suffix);
+        // reset history navigation when using completions
+        self.history_pos = None;
+        self.history_saved_input = None;
+    }
+
+    fn current_last_word_bounds(&self) -> (usize, usize) {
+        // returns (start_idx, end_idx) of the last word in message_input
+        let idx = self.message_input.rfind(|c: char| c.is_whitespace()).map_or(0, |i| i+1);
+        (idx, self.message_input.len())
+    }
+
+    fn cycle_completion(&mut self, direction: isize) -> bool {
+        if self.completions.is_empty() { return false; }
+        if let Some(idx) = self.completion_index {
+            let len = self.completions.len();
+            let next_idx = ((idx as isize + direction).rem_euclid(len as isize)) as usize;
+            self.completion_index = Some(next_idx);
+            let comp = self.completions[next_idx].clone();
+            let (start, end) = self.current_last_word_bounds();
+            self.apply_completion(&comp, start, end);
+            true
+        } else {
+            // start cycling
+            self.completion_index = Some(0);
+            if let Some(comp) = self.completions.get(0) {
+                let comp = comp.clone();
+                let (start, end) = self.current_last_word_bounds();
+                self.apply_completion(&comp, start, end);
+                true
+            } else { false }
+        }
     }
     
     fn handle_user_command(&mut self) -> bool {
@@ -671,7 +890,9 @@ impl SlircApp {
                 
                 GuiEvent::Motd(line) => {
                     let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log.push(format!("[{}] MOTD: {}", ts, line));
+                    // Clean up MOTD line formatting a bit for readability
+                    let cleaned = Self::clean_motd_line(&line);
+                    self.system_log.push(format!("[{}] MOTD: {}", ts, cleaned));
                 }
                 
                 GuiEvent::Topic { channel, topic } => {
@@ -717,6 +938,32 @@ impl eframe::App for SlircApp {
                     !self.is_connected,
                     egui::TextEdit::singleline(&mut self.nickname_input).desired_width(100.0),
                 );
+                ui.separator();
+                ui.label("Theme:");
+                if ui.selectable_label(self.theme == "dark", "Dark").clicked() {
+                    self.theme = "dark".into();
+                    ui.ctx().set_visuals(egui::Visuals::dark());
+                    let settings = Settings {
+                        server: self.server_input.clone(),
+                        nick: self.nickname_input.clone(),
+                        default_channel: self.channel_input.clone(),
+                        history: self.history.clone(),
+                        theme: self.theme.clone(),
+                    };
+                    let _ = save_settings(&settings);
+                }
+                if ui.selectable_label(self.theme == "light", "Light").clicked() {
+                    self.theme = "light".into();
+                    ui.ctx().set_visuals(egui::Visuals::light());
+                    let settings = Settings {
+                        server: self.server_input.clone(),
+                        nick: self.nickname_input.clone(),
+                        default_channel: self.channel_input.clone(),
+                        history: self.history.clone(),
+                        theme: self.theme.clone(),
+                    };
+                    let _ = save_settings(&settings);
+                }
                 
                 if !self.is_connected {
                     if ui.button("Connect").clicked() {
@@ -770,7 +1017,7 @@ impl eframe::App for SlircApp {
             .show(ctx, |ui| {
                 ui.heading("Buffers");
                 ui.separator();
-                // Show buffers in order
+                // Show buffers in order (also used by top tabs)
                 ui.vertical(|ui| {
                     for name in self.buffers_order.clone() {
                         // Snapshot of the buffer's state to avoid borrow conflicts
@@ -789,12 +1036,18 @@ impl eframe::App for SlircApp {
                                 egui::RichText::new(name.clone()).color(egui::Color32::LIGHT_GRAY)
                             };
 
-                            if ui.selectable_label(selected, rich).clicked() {
+                            let resp = ui.selectable_label(selected, rich);
+                            if resp.clicked() {
                                 self.active_buffer = name.clone();
                                 if let Some(mut_b) = self.buffers.get_mut(&name) {
                                     mut_b.unread = 0;
                                     mut_b.has_mention = false;
                                 }
+                            }
+                            // Right-click context menu
+                            if resp.secondary_clicked() {
+                                self.context_menu_visible = true;
+                                self.context_menu_target = Some(name.clone());
                             }
 
                             if unread > 0 {
@@ -814,7 +1067,38 @@ impl eframe::App for SlircApp {
                     }
                 });
             });
-        
+        // Top panel: horizontal tabs for buffers
+        egui::TopBottomPanel::top("tabs_panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for name in self.buffers_order.clone() {
+                    let (unread, has_mention, _users_len, selected) = if let Some(b) = self.buffers.get(&name) {
+                        (b.unread, b.has_mention, b.users.len(), self.active_buffer == name)
+                    } else {
+                        (0, false, 0, false)
+                    };
+
+                    let mut tab_label = name.clone();
+                    if unread > 0 { tab_label = format!("{} ({})", name, unread); }
+                    let rich = if has_mention {
+                        egui::RichText::new(tab_label).color(egui::Color32::LIGHT_RED).strong()
+                    } else if selected {
+                        egui::RichText::new(tab_label).color(egui::Color32::WHITE).strong()
+                    } else {
+                        egui::RichText::new(tab_label).color(egui::Color32::LIGHT_GRAY)
+                    };
+
+                    if ui.selectable_label(selected, rich).clicked() {
+                        self.active_buffer = name.clone();
+                        if let Some(mut_b) = self.buffers.get_mut(&name) {
+                            mut_b.unread = 0;
+                            mut_b.has_mention = false;
+                        }
+                    }
+                    ui.separator();
+                }
+            });
+        });
+
         // Right panel: User list (for channels)
         if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
             egui::SidePanel::right("users_panel")
@@ -879,6 +1163,32 @@ impl eframe::App for SlircApp {
                         }
                     }
                 }
+
+                // Tab completion: Tab cycles forward; Shift+Tab cycles backward
+                let tab_pressed = response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Tab));
+                let shift = ui.input(|i| i.modifiers.shift);
+                if tab_pressed {
+                    // compute current prefix (last token)
+                    let (start, end) = self.current_last_word_bounds();
+                    let prefix = self.message_input[start..end].trim();
+                    if self.completions.is_empty() {
+                        // first time: gather completions
+                        self.completions = self.collect_completions(prefix);
+                        self.completion_prefix = Some(prefix.to_string());
+                        self.completion_target_channel = prefix.starts_with('#') || prefix.starts_with('&');
+                    }
+                    if !self.completions.is_empty() {
+                        if shift { self.cycle_completion(-1); } else { self.cycle_completion(1); }
+                    }
+                }
+
+                // Reset completions if the user changed the input text
+                if self.last_input_text != self.message_input && !tab_pressed {
+                    self.completions.clear();
+                    self.completion_index = None;
+                    self.completion_prefix = None;
+                }
+                self.last_input_text = self.message_input.clone();
 
                 if (send_clicked || enter_pressed) && !self.message_input.is_empty() {
                     // If it begins with a slash, treat as a command
@@ -977,9 +1287,9 @@ impl eframe::App for SlircApp {
                                             .strong(),
                                     );
                                     if mention {
-                                        ui.label(egui::RichText::new(text).color(egui::Color32::LIGHT_RED));
+                                        self.render_message_text(ui, buffer, text, Some(egui::Color32::LIGHT_RED));
                                     } else {
-                                        ui.label(text);
+                                        self.render_message_text(ui, buffer, text, None);
                                     }
                                 });
                             }
@@ -987,6 +1297,73 @@ impl eframe::App for SlircApp {
                     }
                 });
         });
+
+        // Context menu popup (as a floating window)
+        if self.context_menu_visible {
+            if let Some(target) = self.context_menu_target.clone() {
+                egui::Window::new(format!("Actions: {}", target))
+                    .resizable(false)
+                    .collapsible(false)
+                    .show(ctx, |ui| {
+                        if ui.button("Part").clicked() {
+                            let _ = self.action_tx.send(BackendAction::Part { channel: target.clone(), message: None });
+                            self.context_menu_visible = false;
+                        }
+                        if ui.button("Close").clicked() {
+                            self.buffers.remove(&target);
+                            self.buffers_order.retain(|b| b != &target);
+                            if self.active_buffer == target { self.active_buffer = "System".into(); }
+                            self.context_menu_visible = false;
+                        }
+                        if ui.button("Open in new window").clicked() {
+                            self.open_windows.insert(target.clone());
+                            self.context_menu_visible = false;
+                        }
+                    });
+            }
+        }
+
+        // Floating buffer windows
+        for open_name in self.open_windows.clone() {
+            let mut open = true;
+            egui::Window::new(format!("Window: {}", open_name))
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading(&open_name);
+                    });
+                    ui.separator();
+                    if let Some(buffer) = self.buffers.get(&open_name) {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for (ts, sender, text) in &buffer.messages {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("[{}]", ts)).color(egui::Color32::LIGHT_GRAY));
+                                    ui.label(egui::RichText::new(format!("<{}>", sender)).color(egui::Color32::LIGHT_BLUE).strong());
+                                    self.render_message_text(ui, buffer, text, None);
+                                });
+                            }
+                        });
+                    }
+                });
+            if !open { self.open_windows.remove(&open_name); }
+        }
+    }
+}
+
+impl Drop for SlircApp {
+    fn drop(&mut self) {
+        // Persist settings on exit
+        let settings = Settings {
+            server: self.server_input.clone(),
+            nick: self.nickname_input.clone(),
+            default_channel: self.channel_input.clone(),
+            history: self.history.clone(),
+            theme: self.theme.clone(),
+        };
+        if let Err(e) = save_settings(&settings) {
+            eprintln!("Failed to save settings: {}", e);
+        }
     }
 }
 
@@ -1003,4 +1380,20 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(SlircApp::new(cc)))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_motd() {
+        assert_eq!(SlircApp::clean_motd_line("-"), "");
+        assert_eq!(SlircApp::clean_motd_line(":-"), "");
+        assert_eq!(SlircApp::clean_motd_line(":- "), "");
+        assert_eq!(SlircApp::clean_motd_line(":- Hello world"), "Hello world");
+        assert_eq!(SlircApp::clean_motd_line("- ═════════"), "═════════");
+        assert_eq!(SlircApp::clean_motd_line("Hello"), "Hello");
+        assert_eq!(SlircApp::clean_motd_line(" - Hello"), "Hello");
+    }
 }
