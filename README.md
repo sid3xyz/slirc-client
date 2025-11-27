@@ -137,6 +137,21 @@ cargo run --release
 6. **Disconnect**: Click "Disconnect" button
 7. **Change Nick**: With a connected session, update the Nick input and click "Change Nick" to request a nick change on the server.
 
+### UI & Look-and-feel Improvements
+
+- **Channel tabs**: Buffer list on the left is now a vertical tab list, showing unread counts and a small `x` button to leave a channel.
+- **Unread and Mentions**: Tabs show an unread count; messages mentioning your nick are highlighted in red and mark the tab as `mention`.
+- **Your messages**: Outgoing messages are aligned to the right and colored to help differentiate from other users.
+
+### Quick Checks
+
+Try these to verify the UI features:
+
+1. Connect to an IRC server and join `#straylight`.
+2. From another client, change your nick (`/nick newnick`) and verify that the user list updates to show `newnick`.
+3. Post a message in channel mentioning your nick to verify message highlight and unread increment when the channel is inactive.
+4. Use the left-hand channel tabs to switch buffers and see unread counts cleared.
+
 ## Default Configuration
 
 - **Server**: `irc.slirc.net:6667`
