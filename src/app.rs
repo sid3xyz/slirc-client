@@ -1131,7 +1131,7 @@ impl eframe::App for SlircApp {
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.label("Edit the channel topic:");
-                    let response = ui.add(egui::TextEdit::multiline(&mut new_topic).desired_rows(3));
+                    let _response = ui.add(egui::TextEdit::multiline(&mut new_topic).desired_rows(3));
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
                             if !new_topic.is_empty() {
