@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
+use chrono::Local;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
@@ -37,7 +38,11 @@ enum BackendAction {
     /// Join a channel
     Join(String),
     /// Part (leave) a channel
-    Part(String),
+    Part { channel: String, message: Option<String> },
+    /// Change nick
+    Nick(String),
+    /// Quit the server
+    Quit(Option<String>),
     /// Send a message to a target (channel or user)
     SendMessage { target: String, text: String },
 }
@@ -73,6 +78,8 @@ enum GuiEvent {
     Topic { channel: String, topic: String },
     /// Names list for a channel
     Names { channel: String, names: Vec<String> },
+    /// Notification that the nick changed locally
+    NickChanged(String),
 }
 
 // ============================================================================
@@ -148,14 +155,45 @@ fn run_backend(
                         }
                     }
                     
-                    BackendAction::Part(channel) => {
+                    BackendAction::Part { channel, message } => {
                         if let Some(ref mut t) = transport {
-                            let part_msg = Message::part(&channel);
+                            let part_msg = if let Some(msg) = message {
+                                Message::part_with_message(&channel, &msg)
+                            } else {
+                                Message::part(&channel)
+                            };
                             let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", part_msg)));
                             if let Err(e) = t.write_message(&part_msg).await {
                                 let _ = event_tx.send(GuiEvent::Error(format!("Failed to part: {}", e)));
                             }
                         }
+                    }
+                    BackendAction::Nick(newnick) => {
+                        if let Some(ref mut t) = transport {
+                            let nick_msg = Message::nick(&newnick);
+                            let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", nick_msg)));
+                            if let Err(e) = t.write_message(&nick_msg).await {
+                                let _ = event_tx.send(GuiEvent::Error(format!("Failed to send NICK: {}", e)));
+                            } else {
+                                current_nick = newnick.clone();
+                                let _ = event_tx.send(GuiEvent::NickChanged(newnick));
+                            }
+                        } else {
+                            let _ = event_tx.send(GuiEvent::Error("Not connected".into()));
+                        }
+                    }
+                    BackendAction::Quit(reason) => {
+                        if let Some(ref mut t) = transport {
+                            let quit_msg = if let Some(r) = reason {
+                                Message::quit_with_message(&r)
+                            } else {
+                                Message::quit()
+                            };
+                            let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", quit_msg)));
+                            let _ = t.write_message(&quit_msg).await;
+                        }
+                        transport = None;
+                        let _ = event_tx.send(GuiEvent::Disconnected("User quit".into()));
                     }
                     
                     BackendAction::SendMessage { target, text } => {
@@ -314,7 +352,7 @@ fn run_backend(
 /// Represents a single buffer (channel, query, or system)
 #[derive(Default)]
 struct Buffer {
-    messages: Vec<(String, String)>, // (sender, text)
+    messages: Vec<(String, String, String)>, // (timestamp, sender, text)
     users: Vec<String>,
     topic: String,
 }
@@ -337,6 +375,10 @@ struct SlircApp {
     
     // System log
     system_log: Vec<String>,
+    // Input history
+    history: Vec<String>,
+    history_pos: Option<usize>,
+    history_saved_input: Option<String>,
 }
 
 // Default configuration
@@ -368,6 +410,9 @@ impl SlircApp {
             message_input: String::new(),
             
             system_log: vec!["Welcome to SLIRC!".into()],
+            history: Vec::new(),
+            history_pos: None,
+            history_saved_input: None,
         };
         
         // Create the System buffer
@@ -376,26 +421,131 @@ impl SlircApp {
         app
     }
     
+    fn handle_user_command(&mut self) -> bool {
+        let s = self.message_input.trim();
+        if !s.starts_with('/') {
+            return false;
+        }
+
+        // Remove leading '/'
+        let cmdline = s[1..].trim();
+        let mut parts = cmdline.split_whitespace();
+        let cmd = parts.next().unwrap_or("").to_lowercase();
+        match cmd.as_str() {
+            "join" | "j" => {
+                if let Some(chan) = parts.next() {
+                    let channel = if chan.starts_with('#') || chan.starts_with('&') {
+                        chan.to_string()
+                    } else {
+                        format!("#{}", chan)
+                    };
+                    let _ = self.action_tx.send(BackendAction::Join(channel));
+                } else {
+                    self.system_log.push("Usage: /join <channel>".into());
+                }
+            }
+            "part" | "p" => {
+                if let Some(chan) = parts.next() {
+                    let channel = if chan.starts_with('#') || chan.starts_with('&') {
+                        chan.to_string()
+                    } else {
+                        format!("#{}", chan)
+                    };
+                    let reason = parts.collect::<Vec<_>>().join(" ");
+                    let _ = self.action_tx.send(BackendAction::Part { channel, message: if reason.is_empty() { None } else { Some(reason) } });
+                } else {
+                    // If no channel was provided, part the active buffer if it's a channel
+                    if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
+                        let channel = self.active_buffer.clone();
+                        let reason = parts.collect::<Vec<_>>().join(" ");
+                        let _ = self.action_tx.send(BackendAction::Part { channel, message: if reason.is_empty() { None } else { Some(reason) } });
+                    } else {
+                        self.system_log.push("Usage: /part <channel>".into());
+                    }
+                }
+            }
+            "msg" | "privmsg" => {
+                if let Some(target) = parts.next() {
+                    let text = parts.collect::<Vec<_>>().join(" ");
+                    if text.is_empty() {
+                        self.system_log.push("Usage: /msg <target> <message>".into());
+                    } else {
+                        let target = target.to_string();
+                        let _ = self.action_tx.send(BackendAction::SendMessage { target, text });
+                    }
+                } else {
+                    self.system_log.push("Usage: /msg <target> <message>".into());
+                }
+            }
+            "me" => {
+                let text = parts.collect::<Vec<_>>().join(" ");
+                if text.is_empty() {
+                    self.system_log.push("Usage: /me <action>".into());
+                } else {
+                    // Use ACTION CTCP encoding
+                    let action_text = format!("\x01ACTION {}\x01", text);
+                    // Send to active buffer
+                    if self.active_buffer != "System" {
+                        let target = self.active_buffer.clone();
+                        let _ = self.action_tx.send(BackendAction::SendMessage { target, text: action_text });
+                    } else {
+                        self.system_log.push("/me can only be used in a channel or PM".into());
+                    }
+                }
+            }
+            "nick" => {
+                if let Some(newnick) = parts.next() {
+                    // Update locally and send to server
+                    self.nickname_input = newnick.to_string();
+                    let _ = self.action_tx.send(BackendAction::Nick(newnick.to_string()));
+                } else {
+                    self.system_log.push("Usage: /nick <newnick>".into());
+                }
+            }
+            "quit" | "exit" => {
+                let reason = parts.collect::<Vec<_>>().join(" ");
+                let _ = self.action_tx.send(BackendAction::Quit(if reason.is_empty() { None } else { Some(reason) }));
+            }
+            "help" => {
+                self.system_log.push("Supported commands: /join, /part, /msg, /me, /nick, /quit".into());
+            }
+            unknown => {
+                self.system_log.push(format!("Unknown command: /{}", unknown));
+            }
+        }
+        true
+    }
+    
     fn process_events(&mut self) {
         // Drain all pending events from the backend
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 GuiEvent::Connected => {
                     self.is_connected = true;
-                    self.system_log.push("✓ Connected and registered!".into());
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] ✓ Connected and registered!", ts));
                 }
                 
                 GuiEvent::Disconnected(reason) => {
                     self.is_connected = false;
-                    self.system_log.push(format!("✗ Disconnected: {}", reason));
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] ✗ Disconnected: {}", ts, reason));
                 }
                 
                 GuiEvent::Error(msg) => {
-                    self.system_log.push(format!("⚠ Error: {}", msg));
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] ⚠ Error: {}", ts, msg));
+                }
+                GuiEvent::NickChanged(newnick) => {
+                    // Keep the UI name in sync with the backend's current nick
+                    self.nickname_input = newnick.clone();
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] Nick changed to {}", ts, newnick));
                 }
                 
                 GuiEvent::RawMessage(msg) => {
-                    self.system_log.push(msg);
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] {}", ts, msg));
                     // Keep log from growing too large
                     if self.system_log.len() > 500 {
                         self.system_log.remove(0);
@@ -410,22 +560,24 @@ impl SlircApp {
                         // Private message - use sender as buffer name
                         sender.clone()
                     };
-                    
+                    let ts = Local::now().format("%H:%M:%S").to_string();
                     self.buffers
                         .entry(buffer_name.clone())
                         .or_insert_with(Buffer::default)
                         .messages
-                        .push((sender, text));
+                        .push((ts, sender, text));
                 }
                 
                 GuiEvent::JoinedChannel(channel) => {
-                    self.system_log.push(format!("✓ Joined {}", channel));
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] ✓ Joined {}", ts, channel));
                     self.buffers.entry(channel.clone()).or_insert_with(Buffer::default);
                     self.active_buffer = channel;
                 }
                 
                 GuiEvent::PartedChannel(channel) => {
-                    self.system_log.push(format!("← Left {}", channel));
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] ← Left {}", ts, channel));
                     self.buffers.remove(&channel);
                     if self.active_buffer == channel {
                         self.active_buffer = "System".into();
@@ -434,7 +586,8 @@ impl SlircApp {
                 
                 GuiEvent::UserJoined { channel, nick } => {
                     if let Some(buffer) = self.buffers.get_mut(&channel) {
-                        buffer.messages.push(("→".into(), format!("{} joined", nick)));
+                        let ts = Local::now().format("%H:%M:%S").to_string();
+                        buffer.messages.push((ts, "→".into(), format!("{} joined", nick)));
                         if !buffer.users.contains(&nick) {
                             buffer.users.push(nick);
                             buffer.users.sort();
@@ -445,21 +598,22 @@ impl SlircApp {
                 GuiEvent::UserParted { channel, nick, message } => {
                     if let Some(buffer) = self.buffers.get_mut(&channel) {
                         let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
-                        buffer.messages.push(("←".into(), format!("{} left{}", nick, msg)));
+                        let ts = Local::now().format("%H:%M:%S").to_string();
+                        buffer.messages.push((ts, "←".into(), format!("{} left{}", nick, msg)));
                         buffer.users.retain(|u| u != &nick);
                     }
                 }
                 
                 GuiEvent::Motd(line) => {
-                    if let Some(buffer) = self.buffers.get_mut("System") {
-                        buffer.messages.push(("MOTD".into(), line));
-                    }
+                    let ts = Local::now().format("%H:%M:%S").to_string();
+                    self.system_log.push(format!("[{}] MOTD: {}", ts, line));
                 }
                 
                 GuiEvent::Topic { channel, topic } => {
                     if let Some(buffer) = self.buffers.get_mut(&channel) {
                         buffer.topic = topic.clone();
-                        buffer.messages.push(("*".into(), format!("Topic: {}", topic)));
+                        let ts = Local::now().format("%H:%M:%S").to_string();
+                        buffer.messages.push((ts, "*".into(), format!("Topic: {}", topic)));
                     }
                 }
                 
@@ -586,14 +740,66 @@ impl eframe::App for SlircApp {
                 
                 let send_clicked = ui.button("Send").clicked();
                 let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                
-                if (send_clicked || enter_pressed) && !self.message_input.is_empty() && self.is_connected {
-                    if self.active_buffer != "System" {
-                        let _ = self.action_tx.send(BackendAction::SendMessage {
-                            target: self.active_buffer.clone(),
-                            text: self.message_input.clone(),
-                        });
+
+                // Input history navigation
+                if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    if !self.history.is_empty() {
+                        if self.history_pos.is_none() {
+                            // store current text to restore if user navigates back
+                            self.history_saved_input = Some(self.message_input.clone());
+                            self.history_pos = Some(self.history.len() - 1);
+                        } else if let Some(pos) = self.history_pos {
+                            if pos > 0 {
+                                self.history_pos = Some(pos - 1);
+                            }
+                        }
+                        if let Some(pos) = self.history_pos {
+                            if let Some(h) = self.history.get(pos) {
+                                self.message_input = h.clone();
+                            }
+                        }
                     }
+                }
+                if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                    if let Some(pos) = self.history_pos {
+                        if pos + 1 < self.history.len() {
+                            self.history_pos = Some(pos + 1);
+                            if let Some(h) = self.history.get(pos + 1) {
+                                self.message_input = h.clone();
+                            }
+                        } else {
+                            // Exit history navigation
+                            self.history_pos = None;
+                            self.message_input = self.history_saved_input.take().unwrap_or_default();
+                        }
+                    }
+                }
+
+                if (send_clicked || enter_pressed) && !self.message_input.is_empty() {
+                    // If it begins with a slash, treat as a command
+                    if self.message_input.starts_with('/') {
+                        if self.handle_user_command() {
+                            self.history.push(self.message_input.clone());
+                        }
+                    } else {
+                        // Normal message
+                        if self.is_connected {
+                            if self.active_buffer != "System" {
+                                let _ = self.action_tx.send(BackendAction::SendMessage {
+                                    target: self.active_buffer.clone(),
+                                    text: self.message_input.clone(),
+                                });
+                                self.history.push(self.message_input.clone());
+                            }
+                        } else {
+                            let ts = Local::now().format("%H:%M:%S").to_string();
+                            self.system_log.push(format!("[{}] ⚠ Not connected: message not sent", ts));
+                        }
+                    }
+
+                    // Reset history navigation and input
+                    self.history_pos = None;
+                    self.history_saved_input = None;
                     self.message_input.clear();
                     response.request_focus();
                 }
@@ -624,8 +830,12 @@ impl eframe::App for SlircApp {
                             ui.label(line);
                         }
                     } else if let Some(buffer) = self.buffers.get(&self.active_buffer) {
-                        for (sender, text) in &buffer.messages {
+                        for (ts, sender, text) in &buffer.messages {
                             ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("[{}]", ts))
+                                        .color(egui::Color32::LIGHT_GRAY),
+                                );
                                 ui.label(
                                     egui::RichText::new(format!("<{}>", sender))
                                         .color(egui::Color32::LIGHT_BLUE)

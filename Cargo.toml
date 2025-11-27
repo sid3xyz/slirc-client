@@ -20,3 +20,4 @@ slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
 
 # Channels for UI <-> Backend communication
 crossbeam-channel = "0.5"
+chrono = "0.4.42"

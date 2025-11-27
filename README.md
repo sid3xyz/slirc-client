@@ -13,6 +13,9 @@ A native IRC client built with [egui](https://github.com/emilk/egui) and the [sl
 - **Topic display** - Shows channel topics
 - **Raw message logging** - Full IRC protocol visibility in System buffer
 - **PING/PONG handling** - Automatic keep-alive responses
+ - **Command input** - Supports /join, /part, /msg, /nick, /quit, /me
+ - **Timestamps** - Messages are displayed with local timestamps
+ - **Input history** - Use Up/Down to navigate previously sent messages
 
 ## Architecture
 
@@ -168,7 +171,7 @@ slirc-client/
 - [ ] WebSocket connections
 - [ ] SASL authentication
 - [ ] Nick completion (Tab)
-- [ ] Command input (`/join`, `/part`, `/msg`, etc.)
+ - [ ] Command input improvements (Tab completion, extended command parsing)
 - [ ] Configuration file
 - [ ] Multiple server connections
 - [ ] IRCv3 capability negotiation
