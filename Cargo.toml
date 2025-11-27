@@ -15,8 +15,8 @@ eframe = { version = "0.31", default-features = false, features = [
 # Async runtime for the network backend
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
 
-# IRC Protocol library (local path)
-slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
+# IRC Protocol library
+slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto.git", features = ["tokio"] }
 
 # Channels for UI <-> Backend communication
 crossbeam-channel = "0.5"

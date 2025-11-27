@@ -2441,6 +2441,7 @@ dependencies = [
 [[package]]
 name = "slirc-proto"
 version = "1.1.0"
+source = "git+https://github.com/sid3xyz/slirc-proto.git#dae4c691e6c6194ff3bdb7e38f84096a7d960e39"
 dependencies = [
  "anyhow",
  "base64",
