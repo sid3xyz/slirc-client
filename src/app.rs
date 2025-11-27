@@ -915,6 +915,16 @@ impl eframe::App for SlircApp {
                 }
                 self.last_input_text = self.message_input.clone();
 
+                // Esc to cancel input (clear the text field)
+                if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.message_input.clear();
+                    self.history_pos = None;
+                    self.history_saved_input = None;
+                    self.completions.clear();
+                    self.completion_index = None;
+                    self.completion_prefix = None;
+                }
+
                 if enter_pressed && !self.message_input.is_empty() {
                     // If it begins with a slash, treat as a command
                     if self.message_input.starts_with('/') {
