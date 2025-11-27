@@ -16,6 +16,8 @@ A native IRC client built with [egui](https://github.com/emilk/egui) and the [sl
  - **Command input** - Supports /join, /part, /msg, /nick, /quit, /me
  - **Timestamps** - Messages are displayed with local timestamps
  - **Input history** - Use Up/Down to navigate previously sent messages
+ - **Channel tabs (left)** - Buffers are shown as vertical tabs with unread badges
+ - **Mentions highlight** - Messages that mention your nick are highlighted
 
 ## Architecture
 
