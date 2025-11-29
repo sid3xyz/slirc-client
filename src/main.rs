@@ -8,8 +8,11 @@
 mod app;
 mod backend;
 mod buffer;
+mod commands;
 mod config;
+mod events;
 mod protocol;
+mod ui;
 
 use app::SlircApp;
 use eframe::egui;
