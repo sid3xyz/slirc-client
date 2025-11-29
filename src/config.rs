@@ -16,8 +16,10 @@ pub struct Network {
     pub nick: String,
     pub auto_connect: bool,
     pub favorite_channels: Vec<String>, // Auto-join channels
+    #[serde(default, skip_serializing)]
+    pub nickserv_password: Option<String>, // Stored in system keyring, not in JSON
     #[serde(default)]
-    pub nickserv_password: Option<String>, // TODO: Encrypt this
+    pub use_tls: bool, // Whether to use TLS for this network
 }
 
 impl Default for Network {
@@ -29,8 +31,43 @@ impl Default for Network {
             auto_connect: false,
             favorite_channels: vec![],
             nickserv_password: None,
+            use_tls: false,
         }
     }
+}
+
+/// Save a NickServ password to the system keyring
+pub fn save_nickserv_password(network_name: &str, password: &str) -> Result<(), String> {
+    use keyring::Entry;
+    
+    let entry = Entry::new("slirc-client", network_name)
+        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+    
+    entry.set_password(password)
+        .map_err(|e| format!("Failed to save password: {}", e))?;
+    
+    Ok(())
+}
+
+/// Load a NickServ password from the system keyring
+pub fn load_nickserv_password(network_name: &str) -> Option<String> {
+    use keyring::Entry;
+    
+    let entry = Entry::new("slirc-client", network_name).ok()?;
+    entry.get_password().ok()
+}
+
+/// Delete a NickServ password from the system keyring
+pub fn delete_nickserv_password(network_name: &str) -> Result<(), String> {
+    use keyring::Entry;
+    
+    let entry = Entry::new("slirc-client", network_name)
+        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+    
+    entry.delete_password()
+        .map_err(|e| format!("Failed to delete password: {}", e))?;
+    
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize, Default)]

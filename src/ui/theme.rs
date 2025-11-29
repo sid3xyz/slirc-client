@@ -30,6 +30,7 @@ pub fn nick_color(nick: &str) -> Color32 {
 }
 
 /// IRC user prefix ranks (higher = more privileged).
+#[allow(dead_code)]
 pub fn prefix_rank(prefix: Option<char>) -> u8 {
     match prefix {
         Some('~') => 5, // Owner

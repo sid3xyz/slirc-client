@@ -1,16 +1,44 @@
 use crossbeam_channel::{Receiver, Sender};
 use slirc_proto::mode::{ChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix, Transport};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
 use tokio::time::timeout;
+use rustls::RootCertStore;
+use tokio_rustls::TlsConnector;
 
 use crate::protocol::{BackendAction, GuiEvent, UserInfo};
 
+/// Create a TLS connector with webpki root certificates
+#[allow(dead_code)]
+fn create_tls_connector() -> Result<TlsConnector, String> {
+    let mut root_store = RootCertStore::empty();
+    
+    // Use webpki-roots for cross-platform compatibility
+    root_store.extend(
+        webpki_roots::TLS_SERVER_ROOTS
+            .iter()
+            .cloned()
+    );
+    
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    
+    Ok(TlsConnector::from(Arc::new(config)))
+}
+
 pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent>) {
     // Create a Tokio runtime for this thread
-    let rt = Runtime::new().expect("Failed to create Tokio runtime");
+    let rt = match Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            let _ = event_tx.send(GuiEvent::Error(format!("Failed to create Tokio runtime: {}", e)));
+            return;
+        }
+    };
 
     rt.block_on(async move {
         let mut transport: Option<Transport> = None;
@@ -26,17 +54,32 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                         nickname,
                         username,
                         realname,
+                        use_tls,
                     } => {
                         current_nick = nickname.clone();
 
                         // Try to connect
                         let addr = format!("{}:{}", server, port);
-                        let _ = event_tx
-                            .send(GuiEvent::RawMessage(format!("Connecting to {}...", addr)));
+                        let protocol = if use_tls { "TLS" } else { "TCP" };
+                        let _ = event_tx.send(GuiEvent::RawMessage(format!(
+                            "Connecting to {} via {}...", addr, protocol
+                        )));
 
                         match TcpStream::connect(&addr).await {
                             Ok(stream) => {
-                                let mut t = match Transport::tcp(stream) {
+                                // TODO: TLS support is currently disabled due to slirc-proto limitation
+                                // The library uses tokio_rustls::server::TlsStream, but IRC clients need
+                                // tokio_rustls::client::TlsStream. This will be fixed when slirc-proto
+                                // adds proper client TLS support.
+                                
+                                if use_tls {
+                                    let _ = event_tx.send(GuiEvent::Error(
+                                        "TLS support is not yet available. Please use plain TCP connection.".to_string()
+                                    ));
+                                    continue;
+                                }
+                                
+                                let t = match Transport::tcp(stream) {
                                     Ok(t) => t,
                                     Err(e) => {
                                         let _ = event_tx.send(GuiEvent::Error(format!(
@@ -47,29 +90,29 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                     }
                                 };
 
+                                let mut transport_inst = t;
+
                                 // Send NICK
                                 let nick_msg = Message::nick(&nickname);
-                                if let Err(e) = t.write_message(&nick_msg).await {
+                                if let Err(e) = transport_inst.write_message(&nick_msg).await {
                                     let _ = event_tx.send(GuiEvent::Error(format!(
                                         "Failed to send NICK: {}",
                                         e
                                     )));
                                     continue;
                                 }
-                                // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", nick_msg)));
 
                                 // Send USER
                                 let user_msg = Message::user(&username, &realname);
-                                if let Err(e) = t.write_message(&user_msg).await {
+                                if let Err(e) = transport_inst.write_message(&user_msg).await {
                                     let _ = event_tx.send(GuiEvent::Error(format!(
                                         "Failed to send USER: {}",
                                         e
                                     )));
                                     continue;
                                 }
-                                // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", user_msg)));
 
-                                transport = Some(t);
+                                transport = Some(transport_inst);
                             }
                             Err(e) => {
                                 let _ = event_tx

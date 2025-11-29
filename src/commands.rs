@@ -3,6 +3,7 @@
 use crossbeam_channel::Sender;
 
 use crate::protocol::BackendAction;
+use crate::validation;
 
 /// Handle user commands starting with '/'.
 /// Returns true if the input was a command (and should be cleared), false otherwise.
@@ -32,6 +33,13 @@ pub fn handle_user_command(
                 } else {
                     format!("#{}", chan)
                 };
+                
+                // Validate channel name
+                if let Err(e) = validation::validate_channel_name(&channel) {
+                    system_log.push(format!("Invalid channel name: {}", e));
+                    return true;
+                }
+                
                 let _ = action_tx.send(BackendAction::Join(channel));
             } else {
                 system_log.push("Usage: /join <channel>".into());

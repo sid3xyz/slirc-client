@@ -15,6 +15,7 @@ pub struct NetworkForm {
     pub auto_connect: bool,
     pub favorite_channels: String, // Comma-separated
     pub nickserv_password: String,
+    pub use_tls: bool,
 }
 
 /// Render the help dialog (F1).
@@ -51,6 +52,7 @@ pub fn render_help_dialog(ctx: &egui::Context, show_help_dialog: &mut bool) {
 }
 
 /// Render the nick change dialog.
+#[allow(dead_code)]
 pub fn render_nick_change_dialog(
     ctx: &egui::Context,
     nick_change_dialog_open: &mut bool,
@@ -187,6 +189,7 @@ pub fn render_network_manager(
                                     auto_connect: net.auto_connect,
                                     favorite_channels: net.favorite_channels.join(", "),
                                     nickserv_password: net.nickserv_password.clone().unwrap_or_default(),
+                                    use_tls: net.use_tls,
                                 };
                             }
 
@@ -205,6 +208,7 @@ pub fn render_network_manager(
                                         nickname: network.nick.clone(),
                                         username: network.nick.clone(),
                                         realname: format!("SLIRC User ({})", network.nick),
+                                        use_tls: network.use_tls,
                                     });
 
                                     // Auto-join favorite channels
@@ -282,7 +286,9 @@ pub fn render_network_manager(
                     ui.label("NickServ Password:");
                     ui.add(egui::TextEdit::singleline(&mut network_form.nickserv_password).password(true));
                 });
-                ui.label("(Optional, stored in plain text - use with caution!)");
+                ui.label("(Optional, stored securely in system keyring)");
+
+                ui.checkbox(&mut network_form.use_tls, "🔒 Use TLS/SSL encryption");
 
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -312,6 +318,7 @@ pub fn render_network_manager(
                             } else {
                                 Some(network_form.nickserv_password.clone())
                             },
+                            use_tls: network_form.use_tls,
                         };
 
                         if let Some(idx) = *editing_network {

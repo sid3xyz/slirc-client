@@ -21,6 +21,7 @@ pub struct SlircApp {
     pub server_input: String,
     pub nickname_input: String,
     pub is_connected: bool,
+    pub use_tls: bool,
 
     // Channels for backend communication
     pub action_tx: Sender<BackendAction>,
@@ -122,16 +123,12 @@ impl SlircApp {
                         egui::FontData::from_owned(bytes).into(),
                     );
                     // Use as primary font for better rendering
-                    fonts
-                        .families
-                        .get_mut(&egui::FontFamily::Proportional)
-                        .unwrap()
-                        .insert(0, "irc_font".to_owned());
-                    fonts
-                        .families
-                        .get_mut(&egui::FontFamily::Monospace)
-                        .unwrap()
-                        .insert(0, "irc_font".to_owned());
+                    if let Some(proportional) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+                        proportional.insert(0, "irc_font".to_owned());
+                    }
+                    if let Some(monospace) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+                        monospace.insert(0, "irc_font".to_owned());
+                    }
                     cc.egui_ctx.set_fonts(fonts);
                     chosen_font = Some(path.to_string());
                     break;
@@ -170,6 +167,7 @@ impl SlircApp {
             server_input: DEFAULT_SERVER.into(),
             nickname_input: "slirc_user".into(),
             is_connected: false,
+            use_tls: false,
 
             action_tx,
             event_rx,
@@ -243,6 +241,7 @@ impl SlircApp {
                             nickname: network.nick.clone(),
                             username: network.nick.clone(),
                             realname: format!("SLIRC User ({})", network.nick),
+                            use_tls: network.use_tls,
                         });
 
                         // Auto-join favorite channels
@@ -445,6 +444,7 @@ impl eframe::App for SlircApp {
                 &mut self.nickname_input,
                 &mut self.channel_input,
                 self.is_connected,
+                &mut self.use_tls,
                 &self.action_tx,
                 &mut self.network_manager_open,
                 &mut self.nick_change_dialog_open,
@@ -894,6 +894,7 @@ impl eframe::App for SlircApp {
                                                 .nickserv_password
                                                 .clone()
                                                 .unwrap_or_default(),
+                                            use_tls: net.use_tls,
                                         };
                                     }
 
@@ -912,6 +913,7 @@ impl eframe::App for SlircApp {
                                                 nickname: network.nick.clone(),
                                                 username: network.nick.clone(),
                                                 realname: format!("SLIRC User ({})", network.nick),
+                                                use_tls: network.use_tls,
                                             });
 
                                             // Auto-join favorite channels after a brief delay
@@ -1040,6 +1042,7 @@ impl eframe::App for SlircApp {
                                     } else {
                                         Some(self.network_form.nickserv_password.clone())
                                     },
+                                    use_tls: self.network_form.use_tls,
                                 };
 
                                 if let Some(idx) = self.editing_network {

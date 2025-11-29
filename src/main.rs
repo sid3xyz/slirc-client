@@ -13,6 +13,13 @@ mod config;
 mod events;
 mod protocol;
 mod ui;
+mod validation;
+
+#[cfg(test)]
+mod backend_tests;
+
+#[cfg(test)]
+mod integration_tests;
 
 use app::SlircApp;
 use eframe::egui;
@@ -37,7 +44,7 @@ mod tests {
     use crate::app::SlircApp;
     use crate::buffer::ChannelBuffer;
     use crate::config::{DEFAULT_CHANNEL, DEFAULT_SERVER};
-    use crate::protocol::{BackendAction, GuiEvent};
+    use crate::protocol::{BackendAction, GuiEvent, UserInfo};
     use crossbeam_channel::unbounded;
     use std::collections::{HashMap, HashSet};
 
@@ -57,6 +64,7 @@ mod tests {
             server_input: DEFAULT_SERVER.into(),
             nickname_input: "tester".into(),
             is_connected: false,
+            use_tls: false,
             action_tx,
             event_rx,
             buffers,
@@ -356,4 +364,517 @@ mod tests {
             _ => panic!("Expected SendMessage action with CTCP ACTION"),
         }
     }
+
+    #[test]
+    fn test_nick_command_sends_action() {
+        let (mut app, _, action_rx) = create_test_app();
+        app.is_connected = true;
+        app.nickname_input = "oldnick".into();
+
+        app.message_input = String::from("/nick newnick");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        assert_eq!(app.nickname_input, "newnick");
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Nick(nick) => {
+                assert_eq!(nick, "newnick");
+            }
+            _ => panic!("Expected Nick action"),
+        }
+    }
+
+    #[test]
+    fn test_quit_command_sends_action() {
+        let (mut app, _, action_rx) = create_test_app();
+        app.is_connected = true;
+
+        app.message_input = String::from("/quit Goodbye everyone");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Quit(reason) => {
+                assert_eq!(reason, Some("Goodbye everyone".to_string()));
+            }
+            _ => panic!("Expected Quit action"),
+        }
+    }
+
+    #[test]
+    fn test_quit_command_without_reason() {
+        let (mut app, _, action_rx) = create_test_app();
+        app.is_connected = true;
+
+        app.message_input = String::from("/quit");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Quit(reason) => {
+                assert_eq!(reason, None);
+            }
+            _ => panic!("Expected Quit action"),
+        }
+    }
+
+    #[test]
+    fn test_help_command_shows_usage() {
+        let (mut app, _, _) = create_test_app();
+        let original_log_size = app.system_log.len();
+
+        app.message_input = String::from("/help");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        assert!(app.system_log.len() > original_log_size);
+        assert!(app.system_log.last().unwrap().contains("Supported commands"));
+    }
+
+    #[test]
+    fn test_unknown_command_logs_error() {
+        let (mut app, _, _) = create_test_app();
+        let original_log_size = app.system_log.len();
+
+        app.message_input = String::from("/foobar");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        assert!(app.system_log.len() > original_log_size);
+        assert!(app.system_log.last().unwrap().contains("Unknown command"));
+        assert!(app.system_log.last().unwrap().contains("foobar"));
+    }
+
+    #[test]
+    fn test_msg_command_without_message() {
+        let (mut app, _, _) = create_test_app();
+        let original_log_size = app.system_log.len();
+
+        app.message_input = String::from("/msg alice");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        assert!(app.system_log.len() > original_log_size);
+        assert!(app.system_log.last().unwrap().contains("Usage"));
+    }
+
+    #[test]
+    fn test_part_without_args_parts_active_channel() {
+        let (mut app, _, action_rx) = create_test_app();
+        app.is_connected = true;
+        app.active_buffer = "#test".into();
+        app.buffers.insert("#test".into(), ChannelBuffer::new());
+
+        app.message_input = String::from("/part");
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Part { channel, message } => {
+                assert_eq!(channel, "#test");
+                assert_eq!(message, None);
+            }
+            _ => panic!("Expected Part action"),
+        }
+    }
+
+    #[test]
+    fn test_user_joined_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.active_buffer = "#test".into();
+        app.buffers.insert("#test".into(), ChannelBuffer::new());
+
+        event_tx
+            .send(GuiEvent::UserJoined {
+                channel: "#test".to_string(),
+                nick: "alice".to_string(),
+            })
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        let buffer = app.buffers.get("#test").unwrap();
+        assert!(buffer.users.iter().any(|u| u.nick == "alice"));
+        assert!(buffer.messages.iter().any(|m| m.text.contains("alice joined")));
+    }
+
+    #[test]
+    fn test_user_parted_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.active_buffer = "#test".into();
+        let mut buffer = ChannelBuffer::new();
+        buffer.users.push(UserInfo {
+            nick: "alice".to_string(),
+            prefix: None,
+        });
+        app.buffers.insert("#test".into(), buffer);
+
+        event_tx
+            .send(GuiEvent::UserParted {
+                channel: "#test".to_string(),
+                nick: "alice".to_string(),
+                message: Some("Goodbye".to_string()),
+            })
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        let buffer = app.buffers.get("#test").unwrap();
+        assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
+        assert!(buffer.messages.iter().any(|m| m.text.contains("alice left")));
+        assert!(buffer.messages.iter().any(|m| m.text.contains("Goodbye")));
+    }
+
+    #[test]
+    fn test_user_quit_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.active_buffer = "#test".into();
+        let mut buffer = ChannelBuffer::new();
+        buffer.users.push(UserInfo {
+            nick: "bob".to_string(),
+            prefix: None,
+        });
+        app.buffers.insert("#test".into(), buffer);
+
+        event_tx
+            .send(GuiEvent::UserQuit {
+                nick: "bob".to_string(),
+                message: Some("Connection reset".to_string()),
+            })
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        let buffer = app.buffers.get("#test").unwrap();
+        assert!(!buffer.users.iter().any(|u| u.nick == "bob"));
+        assert!(buffer.messages.iter().any(|m| m.text.contains("bob quit")));
+        assert!(buffer.messages.iter().any(|m| m.text.contains("Connection reset")));
+    }
+
+    #[test]
+    fn test_nick_changed_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.nickname_input = "alice".into();
+        app.active_buffer = "#test".into();
+        let mut buffer = ChannelBuffer::new();
+        buffer.users.push(UserInfo {
+            nick: "alice".to_string(),
+            prefix: None,
+        });
+        app.buffers.insert("#test".into(), buffer);
+
+        event_tx
+            .send(GuiEvent::NickChanged {
+                old: "alice".to_string(),
+                new: "alice_away".to_string(),
+            })
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert_eq!(app.nickname_input, "alice_away");
+        let buffer = app.buffers.get("#test").unwrap();
+        assert!(buffer.users.iter().any(|u| u.nick == "alice_away"));
+        assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
+        assert!(buffer.messages.iter().any(|m| m.text.contains("alice is now known as alice_away")));
+    }
+
+    #[test]
+    fn test_connected_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = false;
+        app.server_input = "irc.example.com".into();
+
+        event_tx.send(GuiEvent::Connected).unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert!(app.is_connected);
+        assert!(app.expanded_networks.contains("irc.example.com"));
+        assert!(app.system_log.iter().any(|m| m.contains("Connected")));
+        assert!(!app.status_messages.is_empty());
+    }
+
+    #[test]
+    fn test_disconnected_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+
+        event_tx
+            .send(GuiEvent::Disconnected("Connection lost".to_string()))
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert!(!app.is_connected);
+        assert!(app.system_log.iter().any(|m| m.contains("Disconnected")));
+        assert!(app.system_log.iter().any(|m| m.contains("Connection lost")));
+    }
+
+    #[test]
+    fn test_error_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        let original_log_size = app.system_log.len();
+
+        event_tx
+            .send(GuiEvent::Error("Test error message".to_string()))
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert!(app.system_log.len() > original_log_size);
+        assert!(app.system_log.iter().any(|m| m.contains("Error")));
+        assert!(app.system_log.iter().any(|m| m.contains("Test error message")));
+        assert!(!app.status_messages.is_empty());
+    }
+
+    #[test]
+    fn test_raw_message_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        let original_log_size = app.system_log.len();
+
+        event_tx
+            .send(GuiEvent::RawMessage("PING :server".to_string()))
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert!(app.system_log.len() > original_log_size);
+        assert!(app.system_log.iter().any(|m| m.contains("PING :server")));
+    }
+
+    #[test]
+    fn test_joined_channel_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.active_buffer = "System".into();
+
+        event_tx
+            .send(GuiEvent::JoinedChannel("#newchan".to_string()))
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert_eq!(app.active_buffer, "#newchan");
+        assert!(app.buffers.contains_key("#newchan"));
+        assert!(app.system_log.iter().any(|m| m.contains("Joined #newchan")));
+    }
+
+    #[test]
+    fn test_parted_channel_event() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.active_buffer = "#test".into();
+        app.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.buffers_order.push("#test".into());
+
+        event_tx
+            .send(GuiEvent::PartedChannel("#test".to_string()))
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert!(!app.buffers.contains_key("#test"));
+        assert!(!app.buffers_order.contains(&"#test".to_string()));
+        assert_eq!(app.active_buffer, "System");
+        assert!(app.system_log.iter().any(|m| m.contains("Left #test")));
+    }
+
+    #[test]
+    fn test_message_received_creates_pm_buffer() {
+        let (mut app, event_tx, _) = create_test_app();
+        app.is_connected = true;
+        app.nickname_input = "me".into();
+
+        // PM from alice
+        event_tx
+            .send(GuiEvent::MessageReceived {
+                target: "me".to_string(),
+                sender: "alice".to_string(),
+                text: "Hello there!".to_string(),
+            })
+            .unwrap();
+
+        crate::events::process_events(
+            &app.event_rx,
+            &mut app.is_connected,
+            &mut app.buffers,
+            &mut app.buffers_order,
+            &mut app.active_buffer,
+            &mut app.nickname_input,
+            &mut app.system_log,
+            &mut app.expanded_networks,
+            &mut app.status_messages,
+            &app.server_input,
+            &app.font_fallback,
+        );
+
+        assert!(app.buffers.contains_key("alice"));
+        let buffer = app.buffers.get("alice").unwrap();
+        assert!(buffer.messages.iter().any(|m| m.text.contains("Hello there!")));
+    }
 }
+

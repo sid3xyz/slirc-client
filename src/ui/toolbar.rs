@@ -13,6 +13,7 @@ pub fn render_toolbar(
     nickname_input: &mut String,
     channel_input: &mut String,
     is_connected: bool,
+    use_tls: &mut bool,
     action_tx: &Sender<BackendAction>,
     network_manager_open: &mut bool,
     nick_change_dialog_open: &mut bool,
@@ -74,10 +75,12 @@ pub fn render_toolbar(
                     .desired_width(80.0),
             );
 
+            ui.checkbox(use_tls, "🔒 TLS");
+
             if ui.button("Connect").clicked() {
                 let parts: Vec<&str> = server_input.split(':').collect();
                 let server = parts[0].to_string();
-                let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(6667);
+                let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(if *use_tls { 6697 } else { 6667 });
 
                 let _ = action_tx.send(BackendAction::Connect {
                     server,
@@ -85,6 +88,7 @@ pub fn render_toolbar(
                     nickname: nickname_input.clone(),
                     username: nickname_input.clone(),
                     realname: format!("SLIRC User ({})", nickname_input),
+                    use_tls: *use_tls,
                 });
             }
         } else {

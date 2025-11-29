@@ -276,7 +276,8 @@ fn ensure_buffer<'a>(
             buffers_order.push(name.to_string());
         }
     }
-    buffers.get_mut(name).unwrap()
+    // Safe unwrap: we just ensured the key exists above
+    buffers.get_mut(name).expect("Buffer should exist after insertion")
 }
 
 /// Clean MOTD line formatting.

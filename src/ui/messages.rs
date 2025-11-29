@@ -1,7 +1,6 @@
 //! Message rendering for the central chat panel.
 
 use eframe::egui::{self, Color32};
-use regex::Regex;
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 
@@ -207,9 +206,19 @@ fn render_message_text(
     text: &str,
     accent: Option<Color32>,
 ) {
-    // tokenize by whitespace and color tokens: nicks, emotes (:emote:), urls
-    let url_re = Regex::new(r"^(https?://|www\.)[\w\-\.\/~%&=:+?#]+$").unwrap();
-    let emote_re = Regex::new(r"^:([a-zA-Z0-9_]+):$").unwrap();
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    // Compile regexes once at startup - these patterns are constant
+    static URL_RE: Lazy<Regex> = Lazy::new(|| 
+        Regex::new(r"^(https?://|www\.)[\ w\-\.\/~%&=:+?#]+$")
+            .expect("URL regex pattern is valid")
+    );
+    static EMOTE_RE: Lazy<Regex> = Lazy::new(|| 
+        Regex::new(r"^:([a-zA-Z0-9_]+):$")
+            .expect("Emote regex pattern is valid")
+    );
+    let url_re = &*URL_RE;
+    let emote_re = &*EMOTE_RE;
     let tokens: Vec<&str> = text.split_whitespace().collect();
 
     ui.spacing_mut().item_spacing.x = 0.0; // Remove spacing between items
