@@ -12,7 +12,6 @@ use tokio_rustls::TlsConnector;
 use crate::protocol::{BackendAction, GuiEvent, UserInfo};
 
 /// Create a TLS connector with webpki root certificates
-#[allow(dead_code)]
 fn create_tls_connector() -> Result<TlsConnector, String> {
     let mut root_store = RootCertStore::empty();
     
@@ -67,30 +66,70 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
 
                         match TcpStream::connect(&addr).await {
                             Ok(stream) => {
-                                // TODO: TLS support is currently disabled due to slirc-proto limitation
-                                // The library uses tokio_rustls::server::TlsStream, but IRC clients need
-                                // tokio_rustls::client::TlsStream. This will be fixed when slirc-proto
-                                // adds proper client TLS support.
-                                
-                                if use_tls {
-                                    let _ = event_tx.send(GuiEvent::Error(
-                                        "TLS support is not yet available. Please use plain TCP connection.".to_string()
-                                    ));
-                                    continue;
-                                }
-                                
-                                let t = match Transport::tcp(stream) {
-                                    Ok(t) => t,
-                                    Err(e) => {
-                                        let _ = event_tx.send(GuiEvent::Error(format!(
-                                            "Failed to create transport: {}",
-                                            e
-                                        )));
-                                        continue;
+                                let transport_inst = if use_tls {
+                                    // TLS connection
+                                    let connector = match create_tls_connector() {
+                                        Ok(c) => c,
+                                        Err(e) => {
+                                            let _ = event_tx.send(GuiEvent::Error(format!(
+                                                "Failed to create TLS connector: {}",
+                                                e
+                                            )));
+                                            continue;
+                                        }
+                                    };
+                                    
+                                    // Extract hostname for SNI (remove port if present)
+                                    let hostname = server.split(':').next().unwrap_or(&server);
+                                    let server_name = match rustls::pki_types::ServerName::try_from(hostname.to_string()) {
+                                        Ok(name) => name,
+                                        Err(e) => {
+                                            let _ = event_tx.send(GuiEvent::Error(format!(
+                                                "Invalid server name for TLS: {}",
+                                                e
+                                            )));
+                                            continue;
+                                        }
+                                    };
+                                    
+                                    // Perform TLS handshake
+                                    let tls_stream = match connector.connect(server_name, stream).await {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            let _ = event_tx.send(GuiEvent::Error(format!(
+                                                "TLS handshake failed: {}",
+                                                e
+                                            )));
+                                            continue;
+                                        }
+                                    };
+                                    
+                                    // Create client TLS transport
+                                    match Transport::client_tls(tls_stream) {
+                                        Ok(t) => t,
+                                        Err(e) => {
+                                            let _ = event_tx.send(GuiEvent::Error(format!(
+                                                "Failed to create TLS transport: {}",
+                                                e
+                                            )));
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    // Plain TCP connection
+                                    match Transport::tcp(stream) {
+                                        Ok(t) => t,
+                                        Err(e) => {
+                                            let _ = event_tx.send(GuiEvent::Error(format!(
+                                                "Failed to create transport: {}",
+                                                e
+                                            )));
+                                            continue;
+                                        }
                                     }
                                 };
 
-                                let mut transport_inst = t;
+                                let mut transport_inst = transport_inst;
 
                                 // Send NICK
                                 let nick_msg = Message::nick(&nickname);

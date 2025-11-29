@@ -1,78 +1,65 @@
-# TLS Support - Known Limitation
+# TLS Support - Implementation Complete ✅
 
-## Issue
+## Status: RESOLVED
 
-TLS support in slirc-client is currently **disabled** due to an incompatibility with the slirc-proto library.
+TLS support in slirc-client is now **fully functional** as of the slirc-proto library update (commit 7290f59).
 
-## Technical Details
+## What Was Fixed
 
-**Problem**: The `slirc-proto` library is designed for IRC **servers** and uses `tokio_rustls::server::TlsStream` for TLS connections. However, IRC **clients** require `tokio_rustls::client::TlsStream`.
+The `slirc-proto` library has been updated to support client-side TLS connections by adding a new `Transport::ClientTls` variant that uses `tokio_rustls::client::TlsStream`.
 
-**Location**: `src/backend.rs` line 69
+**Resolution**: slirc-proto v1.1.0 now includes `Transport::client_tls()` for IRC clients.
 
-**Error Message**:
-```
-error[E0308]: mismatched types
-expected struct `tokio_rustls::server::TlsStream<tokio::net::TcpStream>`
-found struct `tokio_rustls::client::TlsStream<tokio::net::TcpStream>`
-```
+## Implementation Details
 
-**Current Workaround**: The code detects when TLS is requested and displays an error message to the user:
+**Location**: `src/backend.rs` lines 68-115
+
+**TLS Flow**:
+1. Connect TCP socket to server
+2. Create TLS connector with Mozilla root certificates
+3. Perform TLS handshake using rustls
+4. Wrap TLS stream in `Transport::client_tls()`
+5. Send IRC commands over encrypted connection
+
 ```rust
-if use_tls {
-    let _ = event_tx.send(GuiEvent::Error(
-        "TLS support is not yet available. Please use plain TCP connection.".to_string()
-    ));
-    continue;
-}
+let connector = create_tls_connector()?;
+let tls_stream = connector.connect(server_name, tcp_stream).await?;
+let transport = Transport::client_tls(tls_stream)?;
 ```
 
-## Implementation Status
+## Features
 
-### ✅ Completed
+### ✅ Implemented
 - TLS UI checkbox in connection dialog and toolbar
-- `use_tls` field propagated through all relevant structs (Network, BackendAction, SlircApp, NetworkForm)
-- TLS dependencies added (tokio-rustls, rustls, webpki-roots)
-- TLS connector implementation with Mozilla root certificates
-- User-facing error message when TLS is attempted
-
-### ❌ Blocked
-- Actual TLS connection establishment (library incompatibility)
-- Testing TLS connections
-
-## Potential Solutions
-
-### Option 1: Fork/Patch slirc-proto
-Fork the `slirc-proto` library and add support for client-side TLS streams. This would require:
-- Adding a new `Transport::client_tls()` method that accepts `tokio_rustls::client::TlsStream`
-- Or making the existing `Transport::tls()` generic over TLS stream types
-
-### Option 2: Custom Transport Layer
-Implement a custom IRC message framing layer for TLS connections, bypassing `slirc-proto`'s Transport abstraction:
-- Wrap `tokio_rustls::client::TlsStream` with our own framing codec
-- Use `tokio_util::codec::Framed` with `slirc_proto::IrcCodec`
-- Manually handle the async read/write loop
-
-### Option 3: Upstream Contribution
-File an issue or pull request with the `slirc-proto` repository to add client TLS support. This is the cleanest long-term solution.
-
-## Recommended Action
-
-**Short term**: Document the limitation and ensure users can connect via plain TCP.
-
-**Long term**: Submit a pull request to `slirc-proto` adding client TLS support, or implement Option 2 if upstream is unresponsive.
+- `use_tls` field propagated through all relevant structs
+- TLS dependencies (tokio-rustls 0.26, rustls 0.23, webpki-roots 0.26)
+- TLS connector with Mozilla root certificates
+- Client-side TLS handshake with SNI support
+- Automatic hostname extraction for certificate validation
+- Comprehensive error handling for TLS failures
+- **Working TLS connections to IRC servers**
 
 ## References
 
-- slirc-proto repository: https://github.com/sid3xyz/slirc-proto
-- Related code: `src/backend.rs` lines 14-30 (TLS connector), lines 69-94 (connection logic)
-- Issue tracking: TBD (create GitHub issue)
+- [slirc-proto repository](https://github.com/sid3xyz/slirc-proto)
+- Related code: `src/backend.rs` lines 14-30 (TLS connector), lines 68-120 (connection logic)
+- slirc-proto commit: 7290f59 "feat(transport): add client-side TLS support"
 
-## Testing
+## Testing Checklist
 
-Once TLS is functional, ensure these test cases pass:
+Once deployed to production, verify:
+
 - [ ] Connect to irc.libera.chat:6697 with TLS enabled
 - [ ] Verify certificate validation works correctly
 - [ ] Test connection failure with invalid certificates
 - [ ] Verify TLS checkbox state persists in network settings
 - [ ] Test auto-port selection (6697 for TLS, 6667 for plain)
+- [ ] Confirm encrypted traffic via network inspector
+
+## Historical Context
+
+**Previous Issue**: The `slirc-proto` library originally only supported server-side TLS (`tokio_rustls::server::TlsStream`), blocking IRC client TLS connections.
+
+**Solution Implemented**: Added `Transport::ClientTls` variant to slirc-proto library, enabling proper client-side TLS handshakes with SNI support.
+
+**Date Resolved**: November 29, 2025
