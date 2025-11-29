@@ -225,7 +225,11 @@ mod tests {
     fn test_notice_message_type() {
         use crate::buffer::MessageType;
         let (mut app, event_tx, _) = create_test_app();
-        let _ = event_tx.send(GuiEvent::MessageReceived { target: "System".into(), sender: "-server-".into(), text: "This is a notice".into() });
+        let _ = event_tx.send(GuiEvent::MessageReceived {
+            target: "System".into(),
+            sender: "-server-".into(),
+            text: "This is a notice".into(),
+        });
         app.process_events();
         let buf = app.buffers.get("-server-").unwrap();
         assert!(!buf.messages.is_empty());
@@ -238,7 +242,12 @@ mod tests {
         let _ = event_tx.send(GuiEvent::Connected);
         app.process_events();
         assert!(!app.status_messages.is_empty());
-        assert!(app.status_messages.last().unwrap().0.contains("Connected to"));
+        assert!(app
+            .status_messages
+            .last()
+            .unwrap()
+            .0
+            .contains("Connected to"));
     }
 
     #[test]
