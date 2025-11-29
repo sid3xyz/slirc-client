@@ -14,7 +14,10 @@ pub enum BackendAction {
     /// Join a channel
     Join(String),
     /// Part (leave) a channel
-    Part { channel: String, message: Option<String> },
+    Part {
+        channel: String,
+        message: Option<String>,
+    },
     /// Change nick
     Nick(String),
     /// Quit the server
@@ -26,9 +29,17 @@ pub enum BackendAction {
     /// Request WHOIS information for a nick
     Whois(String),
     /// Kick a user from a channel
-    Kick { channel: String, nick: String, reason: Option<String> },
+    Kick {
+        channel: String,
+        nick: String,
+        reason: Option<String>,
+    },
     /// Set a user mode in a channel by sending MODE <channel> <+/-mode> <nick>
-    SetUserMode { channel: String, nick: String, mode: String },
+    SetUserMode {
+        channel: String,
+        nick: String,
+        mode: String,
+    },
 }
 
 /// Events sent from the Backend to the UI
@@ -53,12 +64,24 @@ pub enum GuiEvent {
     /// Someone joined a channel we're in
     UserJoined { channel: String, nick: String },
     /// Someone left a channel we're in
-    UserParted { channel: String, nick: String, message: Option<String> },
+    UserParted {
+        channel: String,
+        nick: String,
+        message: Option<String>,
+    },
     /// A user quit from the server (affects all channels they were in)
-    UserQuit { nick: String, message: Option<String> },
+    UserQuit {
+        nick: String,
+        message: Option<String>,
+    },
     /// A user mode was changed in a channel (e.g. +o/-o) — used to update
     /// the nickname prefix in the UI.
-    UserMode { channel: String, nick: String, prefix: Option<char>, added: bool },
+    UserMode {
+        channel: String,
+        nick: String,
+        prefix: Option<char>,
+        added: bool,
+    },
     /// Raw server message for the system log
     RawMessage(String),
     /// MOTD line
@@ -67,7 +90,10 @@ pub enum GuiEvent {
     Topic { channel: String, topic: String },
     /// Names list for a channel. Each name contains any mode prefix that was
     /// included in the NAMES reply (e.g. `@`, `+`, `%`, `~`, `&`).
-    Names { channel: String, names: Vec<UserInfo> },
+    Names {
+        channel: String,
+        names: Vec<UserInfo>,
+    },
     /// Notification that the nick changed locally
     NickChanged { old: String, new: String },
 }
