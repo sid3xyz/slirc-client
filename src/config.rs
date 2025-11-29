@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -65,7 +65,8 @@ pub fn load_settings() -> Option<Settings> {
 pub fn save_settings(settings: &Settings) -> std::io::Result<()> {
     if let Some(path) = settings_path() {
         let mut file = fs::File::create(path)?;
-        let data = serde_json::to_string_pretty(settings).unwrap();
+        let data = serde_json::to_string_pretty(settings)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         file.write_all(data.as_bytes())?;
     }
     Ok(())
