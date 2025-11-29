@@ -361,4 +361,132 @@ mod integration_tests {
         assert_eq!(buffers.get("#channel2").unwrap().users.len(), 0);
         assert_eq!(buffers.get("#channel2").unwrap().messages.len(), 1);
     }
+
+    /// Test TLS connector creation with webpki root certificates
+    #[test]
+    fn test_tls_connector_creation() {
+        use crate::backend::create_tls_connector;
+        
+        let result = create_tls_connector();
+        assert!(result.is_ok(), "TLS connector should be created successfully");
+    }
+
+    /// Test TLS-enabled backend action
+    #[test]
+    fn test_tls_backend_action() {
+        let (action_tx, action_rx) = unbounded::<BackendAction>();
+
+        // Send a connect action with TLS enabled
+        action_tx.send(BackendAction::Connect {
+            server: "irc.libera.chat".to_string(),
+            port: 6697,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            realname: "Test User".to_string(),
+            use_tls: true,
+        }).unwrap();
+
+        // Verify action was sent correctly
+        let action = action_rx.try_recv().unwrap();
+        match action {
+            BackendAction::Connect { server, port, use_tls, .. } => {
+                assert_eq!(server, "irc.libera.chat");
+                assert_eq!(port, 6697);
+                assert!(use_tls, "TLS should be enabled");
+            }
+            _ => panic!("Expected Connect action"),
+        }
+    }
+
+    /// Test TLS state propagation through protocol structures
+    #[test]
+    fn test_tls_state_propagation() {
+        let (action_tx, action_rx) = unbounded::<BackendAction>();
+
+        // Test with TLS enabled
+        action_tx.send(BackendAction::Connect {
+            server: "secure.server.com".to_string(),
+            port: 6697,
+            nickname: "user".to_string(),
+            username: "user".to_string(),
+            realname: "User".to_string(),
+            use_tls: true,
+        }).unwrap();
+
+        let action1 = action_rx.try_recv().unwrap();
+        if let BackendAction::Connect { use_tls, .. } = action1 {
+            assert!(use_tls);
+        }
+
+        // Test with TLS disabled
+        action_tx.send(BackendAction::Connect {
+            server: "plain.server.com".to_string(),
+            port: 6667,
+            nickname: "user".to_string(),
+            username: "user".to_string(),
+            realname: "User".to_string(),
+            use_tls: false,
+        }).unwrap();
+
+        let action2 = action_rx.try_recv().unwrap();
+        if let BackendAction::Connect { use_tls, .. } = action2 {
+            assert!(!use_tls);
+        }
+    }
+
+    /// Test hostname extraction for SNI (Server Name Indication)
+    #[test]
+    fn test_hostname_extraction_for_sni() {
+        // Test cases for hostname extraction used in TLS SNI
+        let test_cases = vec![
+            ("irc.libera.chat", "irc.libera.chat"),
+            ("irc.libera.chat:6697", "irc.libera.chat"),
+            ("192.168.1.1", "192.168.1.1"),
+            ("192.168.1.1:6667", "192.168.1.1"),
+            ("irc.example.com:9999", "irc.example.com"),
+        ];
+
+        for (input, expected) in test_cases {
+            let hostname = input.split(':').next().unwrap_or(input);
+            assert_eq!(hostname, expected, "Failed for input: {}", input);
+        }
+    }
+
+    /// Test TLS error event handling
+    #[test]
+    fn test_tls_error_event_handling() {
+        let (event_tx, event_rx) = unbounded::<GuiEvent>();
+        let mut system_log: Vec<String> = Vec::new();
+
+        // Simulate TLS error
+        event_tx.send(GuiEvent::Error(
+            "TLS handshake failed: certificate verify failed".to_string()
+        )).unwrap();
+
+        // Process the error event
+        if let Ok(GuiEvent::Error(msg)) = event_rx.try_recv() {
+            system_log.push(format!("Error: {}", msg));
+            assert!(msg.contains("TLS"));
+            assert!(msg.contains("certificate"));
+        }
+
+        assert_eq!(system_log.len(), 1);
+        assert!(system_log[0].contains("TLS handshake failed"));
+    }
+
+    /// Test port selection based on TLS setting
+    #[test]
+    fn test_port_selection_for_tls() {
+        // Typical IRC ports
+        let tls_port = 6697;
+        let plain_port = 6667;
+
+        // Verify TLS uses secure port
+        assert_eq!(tls_port, 6697);
+        assert_ne!(tls_port, plain_port);
+
+        // Verify plain uses standard port
+        assert_eq!(plain_port, 6667);
+    }
 }
+

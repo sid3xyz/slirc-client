@@ -244,8 +244,64 @@ pub fn render_network_manager(
 
             ui.separator();
 
+            // Quick add popular networks
+            if editing_network.is_none() {
+                ui.horizontal(|ui| {
+                    ui.label("Quick add:");
+                    if ui.small_button("Libera.Chat").clicked() {
+                        networks.push(Network {
+                            name: "Libera.Chat".to_string(),
+                            servers: vec!["irc.libera.chat:6697".to_string()],
+                            nick: "slirc_user".to_string(),
+                            auto_connect: false,
+                            favorite_channels: vec!["#slirc".to_string()],
+                            nickserv_password: None,
+                            use_tls: true,
+                        });
+                        save_networks_fn(networks);
+                    }
+                    if ui.small_button("OFTC").clicked() {
+                        networks.push(Network {
+                            name: "OFTC".to_string(),
+                            servers: vec!["irc.oftc.net:6697".to_string()],
+                            nick: "slirc_user".to_string(),
+                            auto_connect: false,
+                            favorite_channels: vec![],
+                            nickserv_password: None,
+                            use_tls: true,
+                        });
+                        save_networks_fn(networks);
+                    }
+                    if ui.small_button("EFnet").clicked() {
+                        networks.push(Network {
+                            name: "EFnet".to_string(),
+                            servers: vec!["irc.choopa.net:9999".to_string()],
+                            nick: "slirc_user".to_string(),
+                            auto_connect: false,
+                            favorite_channels: vec![],
+                            nickserv_password: None,
+                            use_tls: true,
+                        });
+                        save_networks_fn(networks);
+                    }
+                    if ui.small_button("Rizon").clicked() {
+                        networks.push(Network {
+                            name: "Rizon".to_string(),
+                            servers: vec!["irc.rizon.net:6697".to_string()],
+                            nick: "slirc_user".to_string(),
+                            auto_connect: false,
+                            favorite_channels: vec![],
+                            nickserv_password: None,
+                            use_tls: true,
+                        });
+                        save_networks_fn(networks);
+                    }
+                });
+                ui.separator();
+            }
+
             // Add/Edit network form
-            if editing_network.is_some() || ui.button("Add Network").clicked() && editing_network.is_none() {
+            if editing_network.is_some() || ui.button("➕ Add Network").clicked() && editing_network.is_none() {
                 if editing_network.is_none() {
                     // Start adding a new network
                     *network_form = NetworkForm::default();

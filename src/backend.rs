@@ -12,7 +12,7 @@ use tokio_rustls::TlsConnector;
 use crate::protocol::{BackendAction, GuiEvent, UserInfo};
 
 /// Create a TLS connector with webpki root certificates
-fn create_tls_connector() -> Result<TlsConnector, String> {
+pub(crate) fn create_tls_connector() -> Result<TlsConnector, String> {
     let mut root_store = RootCertStore::empty();
     
     // Use webpki-roots for cross-platform compatibility
