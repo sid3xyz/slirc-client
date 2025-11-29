@@ -220,21 +220,21 @@ Passwords are **never** stored in plain text configuration files.
 ## Security & Quality
 
 ### Security Features
-- \u2705 **TLS 1.3 Support** - Modern encryption with certificate validation
-- \u2705 **Secure Password Storage** - System keyring integration
-- \u2705 **Input Validation** - RFC 2812 compliant sanitization
-- \u2705 **No Hardcoded Secrets** - All credentials user-provided
-- \u2705 **Certificate Verification** - Mozilla root CA store (webpki-roots)
+- ✅ **TLS 1.3 Support** - Modern encryption with certificate validation
+- ✅ **Secure Password Storage** - System keyring integration
+- ✅ **Input Validation** - RFC 2812 compliant sanitization
+- ✅ **No Hardcoded Secrets** - All credentials user-provided
+- ✅ **Certificate Verification** - Mozilla root CA store (webpki-roots)
 
 ### Code Quality
-- \u2705 **Zero Production Unwraps** - Proper error handling throughout
-- \u2705 **69 Passing Tests** - Unit and integration test coverage
-- \u2705 **21.23% Test Coverage** - Core business logic well-tested
+- ✅ **Zero Production Unwraps** - Proper error handling throughout
+- ✅ **69 Passing Tests** - Unit and integration test coverage
+- ✅ **21.23% Test Coverage** - Core business logic well-tested
   - Events: 93.4% coverage
   - Commands: 71.7% coverage  
   - Validation: 96.3% coverage
-- \u2705 **Type-Safe Protocol** - Leverages Rust's type system
-- \u2705 **Memory Safe** - No unsafe code in production paths
+- ✅ **Type-Safe Protocol** - Leverages Rust's type system
+- ✅ **Memory Safe** - No unsafe code in production paths
 
 ## Project Structure
 
