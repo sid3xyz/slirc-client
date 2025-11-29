@@ -8,10 +8,10 @@
 //! - `theme`: Color schemes and styling utilities
 
 pub mod dialogs;
-mod messages;
-mod panels;
+pub mod messages;
+pub mod panels;
 pub mod theme;
-mod toolbar;
+pub mod toolbar;
 
 // Re-export commonly used items
 pub use panels::sort_users;

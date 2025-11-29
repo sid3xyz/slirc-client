@@ -216,7 +216,14 @@ mod tests {
 
         // Set the message input to a whois command and ensure the action is sent
         app.message_input = String::from("/whois someuser");
-        assert!(app.handle_user_command());
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::Whois(nick) => assert_eq!(nick, "someuser"),
@@ -262,7 +269,14 @@ mod tests {
 
         // Set the message input to a topic change command and ensure the action is sent
         app.message_input = String::from("/topic New Topic");
-        assert!(app.handle_user_command());
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::SetTopic { channel, topic } => {
@@ -275,7 +289,14 @@ mod tests {
         // Now test that /topic with no args displays the topic in system_log
         app.buffers.get_mut("#test").unwrap().topic = "Displayed Topic".into();
         app.message_input = String::from("/topic");
-        assert!(app.handle_user_command());
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
         assert!(app.system_log.iter().any(|l| l.contains("Displayed Topic")));
     }
 
@@ -287,7 +308,14 @@ mod tests {
         app.buffers.insert("#test".into(), ChannelBuffer::new());
 
         app.message_input = String::from("/kick alice Spamming");
-        assert!(app.handle_user_command());
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::Kick {
@@ -311,7 +339,14 @@ mod tests {
         app.buffers.insert("#test".into(), ChannelBuffer::new());
 
         app.message_input = String::from("/me waves hello");
-        assert!(app.handle_user_command());
+        assert!(crate::commands::handle_user_command(
+            &app.message_input,
+            &app.active_buffer,
+            &app.buffers,
+            &app.action_tx,
+            &mut app.system_log,
+            &mut app.nickname_input,
+        ));
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::SendMessage { target, text } => {

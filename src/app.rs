@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::backend::run_backend;
-use crate::buffer::{ChannelBuffer, MessageType};
+use crate::buffer::ChannelBuffer;
 use crate::commands;
 use crate::config::{
     load_settings, save_settings, Network, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
@@ -362,17 +362,6 @@ impl SlircApp {
         }
     }
 
-    pub(crate) fn handle_user_command(&mut self) -> bool {
-        commands::handle_user_command(
-            &self.message_input,
-            &self.active_buffer,
-            &self.buffers,
-            &self.action_tx,
-            &mut self.system_log,
-            &mut self.nickname_input,
-        )
-    }
-
     pub fn process_events(&mut self) {
         events::process_events(
             &self.event_rx,
@@ -449,173 +438,36 @@ impl eframe::App for SlircApp {
 
         // Single compact toolbar (HexChat style - no separate menu bar)
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
-
-                // Compact menu buttons on left
-                ui.menu_button("≡", |ui| {
-                    ui.set_min_width(150.0);
-                    if ui.button("Network List...").clicked() {
-                        self.network_manager_open = true;
-                        ui.close_menu();
-                    }
-                    ui.separator();
-                    if ui
-                        .add_enabled(!self.is_connected, egui::Button::new("Connect"))
-                        .clicked()
-                    {
-                        self.network_manager_open = true;
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(self.is_connected, egui::Button::new("Disconnect"))
-                        .clicked()
-                    {
-                        let _ = self.action_tx.send(BackendAction::Disconnect);
-                        ui.close_menu();
-                    }
-                    ui.separator();
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
-
-                ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.show_channel_list, "Channel List");
-                    ui.checkbox(&mut self.show_user_list, "User List");
-                });
-
-                ui.separator();
-
-                if !self.is_connected {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.server_input)
-                            .hint_text("irc.server.net:6667")
-                            .desired_width(160.0),
-                    );
-
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.nickname_input)
-                            .hint_text("nickname")
-                            .desired_width(80.0),
-                    );
-
-                    if ui.button("Connect").clicked() {
-                        let parts: Vec<&str> = self.server_input.split(':').collect();
-                        let server = parts[0].to_string();
-                        let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(6667);
-
-                        let _ = self.action_tx.send(BackendAction::Connect {
-                            server,
-                            port,
-                            nickname: self.nickname_input.clone(),
-                            username: self.nickname_input.clone(),
-                            realname: format!("SLIRC User ({})", self.nickname_input),
-                        });
-                    }
-                } else {
-                    // When connected
-                    if ui.button(&self.nickname_input).clicked() {
-                        self.nick_change_input = self.nickname_input.clone();
-                        self.nick_change_dialog_open = true;
-                    }
-
-                    ui.separator();
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut self.channel_input)
-                            .hint_text("#channel")
-                            .desired_width(120.0),
-                    );
-
-                    if ui.button("Join").clicked()
-                        || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
-                    {
-                        let channel = if self.channel_input.starts_with('#')
-                            || self.channel_input.starts_with('&')
-                        {
-                            self.channel_input.clone()
-                        } else {
-                            format!("#{}", self.channel_input)
-                        };
-                        let _ = self.action_tx.send(BackendAction::Join(channel));
-                        self.channel_input.clear();
-                    }
-                }
-
-                // Right side - connection status
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if self.is_connected {
-                        ui.label(
-                            egui::RichText::new(&self.server_input)
-                                .color(egui::Color32::DARK_GRAY)
-                                .small(),
-                        );
-                        ui.label(
-                            egui::RichText::new("●").color(egui::Color32::from_rgb(0, 200, 0)),
-                        );
-                    } else {
-                        ui.label(
-                            egui::RichText::new("○").color(egui::Color32::from_rgb(150, 150, 150)),
-                        );
-                    }
-                });
-            });
+            ui::toolbar::render_toolbar(
+                ui,
+                ctx,
+                &mut self.server_input,
+                &mut self.nickname_input,
+                &mut self.channel_input,
+                self.is_connected,
+                &self.action_tx,
+                &mut self.network_manager_open,
+                &mut self.nick_change_dialog_open,
+                &mut self.nick_change_input,
+                &mut self.show_channel_list,
+                &mut self.show_user_list,
+            );
         });
 
         // Left panel: Buffer list (vertical tabs similar to HexChat)
         if self.show_channel_list {
-            egui::SidePanel::left("buffers_panel")
-                .resizable(true)
-                .default_width(180.0)
-                .show(ctx, |ui| {
-                ui.add_space(2.0);
-                // Show buffers in order (also used by top tabs)
-                ui.vertical(|ui| {
-                    // If only system buffer exists, hint the user to join a channel
-                    if self.buffers_order.len() <= 1 {
-                        ui.label(egui::RichText::new("No channels joined. Use the 'Channel' field in the top bar to join a channel.").color(egui::Color32::LIGHT_GRAY));
-                        ui.separator();
-                    }
-                    for name in self.buffers_order.clone() {
-                        // Snapshot of the buffer's state to avoid borrow conflicts
-                        let (unread, has_highlight, _users_len, selected) = if let Some(b) = self.buffers.get(&name) {
-                            (b.unread_count, b.has_highlight, b.users.len(), self.active_buffer == name)
-                        } else {
-                            (0, false, 0, false)
-                        };
-
-                        ui.horizontal(|ui| {
-                            let rich = if has_highlight {
-                                egui::RichText::new(name.clone()).color(egui::Color32::from_rgb(255, 100, 100)).strong()
-                            } else if selected {
-                                egui::RichText::new(name.clone()).color(egui::Color32::WHITE).strong()
-                            } else if unread > 0 {
-                                egui::RichText::new(name.clone()).color(egui::Color32::from_rgb(200, 200, 255))
-                            } else {
-                                egui::RichText::new(name.clone()).color(egui::Color32::GRAY)
-                            };
-
-                            let resp = ui.selectable_label(selected, rich);
-                            if resp.clicked() {
-                                self.active_buffer = name.clone();
-                                if let Some(mut_b) = self.buffers.get_mut(&name) {
-                                    mut_b.clear_unread();
-                                }
-                            }
-                            // Right-click context menu
-                            if resp.secondary_clicked() {
-                                self.context_menu_visible = true;
-                                self.context_menu_target = Some(name.clone());
-                            }
-
-                            if unread > 0 {
-                                ui.label(egui::RichText::new(format!("({})", unread)).color(egui::Color32::from_rgb(100, 150, 255)).small());
-                            }
-                        });
-                    }
-                });
-            });
+            ui::panels::render_channel_list(
+                ctx,
+                &self.buffers,
+                &self.buffers_order,
+                &mut self.active_buffer,
+                &mut self.context_menu_visible,
+                &mut self.context_menu_target,
+            );
+            // Clear unread after switching buffer
+            if let Some(buf) = self.buffers.get_mut(&self.active_buffer) {
+                buf.clear_unread();
+            }
         }
         // (Removed top horizontal buffer tabs — left navigation is the single source of truth.)
 
@@ -623,44 +475,16 @@ impl eframe::App for SlircApp {
         if self.show_user_list
             && (self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&'))
         {
-            egui::SidePanel::right("users_panel")
-                .resizable(true)
-                .default_width(120.0)
-                .show(ctx, |ui| {
-                    if let Some(buffer) = self.buffers.get(&self.active_buffer) {
-                        ui.horizontal(|ui| {
-                            ui.add_space(4.0);
-                            ui.label(
-                                egui::RichText::new(format!("{} users", buffer.users.len()))
-                                    .color(egui::Color32::GRAY)
-                                    .small(),
-                            );
-                        });
-                        ui.add_space(2.0);
-
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            for user in &buffer.users {
-                                let prefix = user.prefix.map(|c| c.to_string()).unwrap_or_default();
-                                let nick_color = match user.prefix {
-                                    Some('@') | Some('~') | Some('&') => {
-                                        egui::Color32::from_rgb(255, 100, 100)
-                                    } // Ops in red
-                                    Some('+') | Some('%') => egui::Color32::from_rgb(100, 200, 255), // Voice in cyan
-                                    _ => egui::Color32::LIGHT_GRAY, // Regular users
-                                };
-                                let label = ui.selectable_label(
-                                    false,
-                                    egui::RichText::new(format!("{}{}", prefix, user.nick))
-                                        .color(nick_color),
-                                );
-                                if label.secondary_clicked() {
-                                    self.context_menu_visible = true;
-                                    self.context_menu_target = Some(format!("user:{}", user.nick));
-                                }
-                            }
-                        });
-                    }
-                });
+            if let Some(buffer) = self.buffers.get(&self.active_buffer) {
+                ui::panels::render_user_list(
+                    ctx,
+                    buffer,
+                    &self.active_buffer,
+                    &self.nickname_input,
+                    &mut self.context_menu_visible,
+                    &mut self.context_menu_target,
+                );
+            }
         }
 
         // Bottom panel: Message input
@@ -759,7 +583,14 @@ impl eframe::App for SlircApp {
                 if enter_pressed && !self.message_input.is_empty() {
                     // If it begins with a slash, treat as a command
                     if self.message_input.starts_with('/') {
-                        if self.handle_user_command() {
+                        if commands::handle_user_command(
+                            &self.message_input,
+                            &self.active_buffer,
+                            &self.buffers,
+                            &self.action_tx,
+                            &mut self.system_log,
+                            &mut self.nickname_input,
+                        ) {
                             self.history.push(self.message_input.clone());
                         }
                     } else {
@@ -790,185 +621,15 @@ impl eframe::App for SlircApp {
 
         // Central panel: Messages with dedicated topic bar
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Topic bar (HexChat style - clean dedicated bar above messages)
-            if self.active_buffer != "System" {
-                egui::TopBottomPanel::top("topic_bar").show_inside(ui, |ui| {
-                    // Add subtle background color for visual separation
-                    let bg_color = if ui.style().visuals.dark_mode {
-                        egui::Color32::from_gray(35)
-                    } else {
-                        egui::Color32::from_gray(245)
-                    };
-                    ui.painter()
-                        .rect_filled(ui.available_rect_before_wrap(), 0.0, bg_color);
-
-                    if let Some(buffer) = self.buffers.get(&self.active_buffer) {
-                        let topic_text = if buffer.topic.is_empty() {
-                            "No topic is set"
-                        } else {
-                            &buffer.topic
-                        };
-
-                        let is_op = buffer.users.iter().any(|u| {
-                            u.nick == self.nickname_input && ui::theme::prefix_rank(u.prefix) >= 3
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.add_space(4.0);
-                            let topic_response = ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(topic_text)
-                                        .italics()
-                                        .color(egui::Color32::LIGHT_GRAY),
-                                )
-                                .wrap()
-                                .sense(if is_op {
-                                    egui::Sense::click()
-                                } else {
-                                    egui::Sense::hover()
-                                }),
-                            );
-
-                            if is_op && topic_response.double_clicked() {
-                                self.topic_editor_open = Some(self.active_buffer.clone());
-                            }
-                            if is_op {
-                                topic_response.on_hover_text("Double-click to edit topic");
-                            }
-                        });
-                    }
-                });
-            }
-
-            // Messages area
-            egui::ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 1.0; // Tighter line spacing like HexChat
-
-                    if self.active_buffer == "System" {
-                        // Show system log
-                        for line in &self.system_log {
-                            ui.label(line);
-                        }
-                    } else if let Some(buffer) = self.buffers.get(&self.active_buffer) {
-                        for msg in &buffer.messages {
-                            let mention = msg.text.contains(&self.nickname_input);
-
-                            match &msg.msg_type {
-                                MessageType::Join
-                                | MessageType::Part
-                                | MessageType::Quit
-                                | MessageType::NickChange => {
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::DARK_GRAY),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.sender)
-                                                .color(egui::Color32::from_rgb(100, 150, 100)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.text)
-                                                .color(egui::Color32::GRAY)
-                                                .italics(),
-                                        );
-                                    });
-                                }
-                                MessageType::Action => {
-                                    let action = if msg.text.starts_with("\x01ACTION ")
-                                        && msg.text.ends_with('\x01')
-                                    {
-                                        &msg.text[8..msg.text.len() - 1]
-                                    } else {
-                                        &msg.text
-                                    };
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::DARK_GRAY),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new("*")
-                                                .color(egui::Color32::from_rgb(200, 100, 200)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.sender)
-                                                .color(ui::theme::nick_color(&msg.sender)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(action)
-                                                .color(egui::Color32::from_rgb(200, 100, 200))
-                                                .italics(),
-                                        );
-                                    });
-                                }
-                                MessageType::Topic => {
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::DARK_GRAY),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new("*")
-                                                .color(egui::Color32::from_rgb(100, 150, 200)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.text)
-                                                .color(egui::Color32::from_rgb(100, 150, 200)),
-                                        );
-                                    });
-                                }
-                                MessageType::Notice => {
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::DARK_GRAY),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.sender)
-                                                .color(egui::Color32::from_rgb(200, 150, 100)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.text)
-                                                .color(egui::Color32::from_rgb(200, 200, 150)),
-                                        );
-                                    });
-                                }
-                                MessageType::Normal => {
-                                    let prefix = buffer
-                                        .users
-                                        .iter()
-                                        .find(|u| u.nick == msg.sender)
-                                        .and_then(|u| u.prefix)
-                                        .map(|c| c.to_string())
-                                        .unwrap_or_default();
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::DARK_GRAY),
-                                        );
-                                        let nick_display = format!("{}{}:", prefix, msg.sender);
-                                        ui.label(
-                                            egui::RichText::new(nick_display)
-                                                .color(ui::theme::nick_color(&msg.sender)),
-                                        );
-                                        if mention {
-                                            ui.label(
-                                                egui::RichText::new(&msg.text)
-                                                    .color(egui::Color32::from_rgb(255, 100, 100)),
-                                            );
-                                        } else {
-                                            ui.label(&msg.text);
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                    }
-                });
+            ui::messages::render_messages(
+                ctx,
+                ui,
+                &self.active_buffer,
+                &self.buffers,
+                &self.system_log,
+                &self.nickname_input,
+                &mut self.topic_editor_open,
+            );
         });
 
         // Context menu popup (as a floating window)
