@@ -82,7 +82,7 @@ mod tests {
             networks: Vec::new(),
             network_manager_open: false,
             editing_network: None,
-            network_form: crate::app::NetworkForm::default(),
+            network_form: crate::ui::dialogs::NetworkForm::default(),
             show_channel_list: true,
             show_user_list: true,
             expanded_networks: HashSet::new(),
@@ -96,14 +96,14 @@ mod tests {
 
     #[test]
     fn test_clean_motd() {
-        let (app, _, _) = create_test_app();
-        assert_eq!(app.clean_motd_line("-"), "");
-        assert_eq!(app.clean_motd_line(":-"), "");
-        assert_eq!(app.clean_motd_line(":- "), "");
-        assert_eq!(app.clean_motd_line(":- Hello world"), "Hello world");
-        assert_eq!(app.clean_motd_line("- ═════════"), "---------"); // replaced since no font fallback
-        assert_eq!(app.clean_motd_line("Hello"), "Hello");
-        assert_eq!(app.clean_motd_line(" - Hello"), "Hello");
+        let font_fallback = None;
+        assert_eq!(crate::events::clean_motd_line("-", &font_fallback), "");
+        assert_eq!(crate::events::clean_motd_line(":-", &font_fallback), "");
+        assert_eq!(crate::events::clean_motd_line(":- ", &font_fallback), "");
+        assert_eq!(crate::events::clean_motd_line(":- Hello world", &font_fallback), "Hello world");
+        assert_eq!(crate::events::clean_motd_line("- ═════════", &font_fallback), "---------"); // replaced since no font fallback
+        assert_eq!(crate::events::clean_motd_line("Hello", &font_fallback), "Hello");
+        assert_eq!(crate::events::clean_motd_line(" - Hello", &font_fallback), "Hello");
     }
 
     #[test]

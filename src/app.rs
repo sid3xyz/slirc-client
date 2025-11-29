@@ -1,18 +1,20 @@
 use chrono::Local;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui;
-use eframe::egui::Color32;
-use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::time::Duration;
 
 use crate::backend::run_backend;
-use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
+use crate::buffer::{ChannelBuffer, MessageType};
+use crate::commands;
 use crate::config::{
     load_settings, save_settings, Network, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
 };
-use crate::protocol::{BackendAction, GuiEvent, UserInfo};
+use crate::events;
+use crate::protocol::{BackendAction, GuiEvent};
+use crate::ui;
+use crate::ui::dialogs::NetworkForm;
 
 pub struct SlircApp {
     // Connection settings
@@ -66,17 +68,6 @@ pub struct SlircApp {
     pub nick_change_input: String,
     // Status messages (toasts)
     pub status_messages: Vec<(String, std::time::Instant)>,
-}
-
-/// Form state for creating/editing a network
-#[derive(Default, Clone)]
-pub struct NetworkForm {
-    pub name: String,
-    pub servers: String, // Comma-separated
-    pub nick: String,
-    pub auto_connect: bool,
-    pub favorite_channels: String, // Comma-separated
-    pub nickserv_password: String,
 }
 
 impl SlircApp {
@@ -268,17 +259,6 @@ impl SlircApp {
         app
     }
 
-    pub fn ensure_buffer(&mut self, name: &str) -> &mut ChannelBuffer {
-        if !self.buffers.contains_key(name) {
-            self.buffers.insert(name.to_string(), ChannelBuffer::new());
-            // keep insertion order
-            if !self.buffers_order.contains(&name.to_string()) {
-                self.buffers_order.push(name.to_string());
-            }
-        }
-        self.buffers.get_mut(name).unwrap()
-    }
-
     fn save_networks(&self) {
         let settings = Settings {
             server: self.server_input.clone(),
@@ -291,132 +271,6 @@ impl SlircApp {
         if let Err(e) = save_settings(&settings) {
             eprintln!("Failed to save networks: {}", e);
         }
-    }
-
-    fn nick_color(nick: &str) -> Color32 {
-        const COLORS: [Color32; 12] = [
-            Color32::from_rgb(0xFF, 0x66, 0x66),
-            Color32::from_rgb(0x66, 0xCC, 0xFF),
-            Color32::from_rgb(0xFF, 0xCC, 0x66),
-            Color32::from_rgb(0x99, 0xCC, 0x99),
-            Color32::from_rgb(0xCC, 0x99, 0xFF),
-            Color32::from_rgb(0xFF, 0x99, 0xCC),
-            Color32::from_rgb(0x66, 0x99, 0xFF),
-            Color32::from_rgb(0xFF, 0x99, 0x66),
-            Color32::from_rgb(0x99, 0xFF, 0x99),
-            Color32::from_rgb(0xFF, 0xCC, 0x99),
-            Color32::from_rgb(0xCC, 0xFF, 0xFF),
-            Color32::from_rgb(0xCC, 0xCC, 0xFF),
-        ];
-        let mut hash: u64 = 1469598103934665603u64;
-        for b in nick.as_bytes() {
-            hash ^= *b as u64;
-            hash = hash.wrapping_mul(1099511628211u64);
-        }
-        let idx = (hash as usize) % COLORS.len();
-        COLORS[idx]
-    }
-
-    fn prefix_rank(prefix: Option<char>) -> u8 {
-        match prefix {
-            Some('~') => 5, // owner
-            Some('&') => 4, // admin
-            Some('@') => 3, // op
-            Some('%') => 2, // half-op
-            Some('+') => 1, // voice
-            _ => 0,
-        }
-    }
-
-    fn sort_users(users: &mut [UserInfo]) {
-        users.sort_by(|a, b| {
-            let ar = Self::prefix_rank(a.prefix);
-            let br = Self::prefix_rank(b.prefix);
-            br.cmp(&ar).then(a.nick.cmp(&b.nick))
-        });
-    }
-
-    fn render_message_text(
-        &self,
-        ui: &mut egui::Ui,
-        buffer: &ChannelBuffer,
-        text: &str,
-        accent: Option<Color32>,
-    ) {
-        // tokenize by whitespace and color tokens: nicks, emotes (:emote:), urls
-        let url_re = Regex::new(r"^(https?://|www\.)[\w\-\.\/~%&=:+?#]+$").unwrap();
-        let emote_re = Regex::new(r"^:([a-zA-Z0-9_]+):$").unwrap();
-        let tokens: Vec<&str> = text.split_whitespace().collect();
-
-        ui.spacing_mut().item_spacing.x = 0.0; // Remove spacing between items
-
-        for (i, &tok) in tokens.iter().enumerate() {
-            let prefix = if i > 0 { " " } else { "" };
-            let stripped = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '@');
-            // If the token is prefixed with '@' to indicate a mention (e.g. `@nick`),
-            // normalize for lookup by stripping the '@' for nickname matching.
-            let stripped_nick = stripped.trim_start_matches('@');
-            if let Some(color) = accent {
-                if url_re.is_match(tok) {
-                    if i > 0 {
-                        ui.label(" ");
-                    }
-                    ui.hyperlink_to(tok, tok);
-                } else if emote_re.is_match(tok) {
-                    ui.label(
-                        egui::RichText::new(format!("{}{}", prefix, tok))
-                            .color(color)
-                            .italics(),
-                    );
-                } else {
-                    ui.label(egui::RichText::new(format!("{}{}", prefix, tok)).color(color));
-                }
-            } else if url_re.is_match(tok) {
-                if i > 0 {
-                    ui.label(" ");
-                }
-                ui.hyperlink_to(tok, tok);
-            } else if emote_re.is_match(tok) {
-                ui.label(
-                    egui::RichText::new(format!("{}{}", prefix, tok))
-                        .color(egui::Color32::from_rgb(255, 205, 0))
-                        .italics(),
-                );
-            } else if buffer.users.iter().any(|u| u.nick == stripped_nick) {
-                let col = Self::nick_color(stripped_nick);
-                ui.label(egui::RichText::new(format!("{}{}", prefix, tok)).color(col));
-            } else {
-                // default
-                ui.label(format!("{}{}", prefix, tok));
-            }
-        }
-    }
-
-    pub fn clean_motd_line(&self, line: &str) -> String {
-        // Many servers send MOTD lines with a leading ':-' or '- ' prefix for formatting.
-        // Normalize those lines by removing leading punctuation and whitespace so they display
-        // nicely in the UI, while still preserving decoration lines like '════'.
-        let mut s = line.trim_start();
-        if let Some(rest) = s.strip_prefix(":- ") {
-            s = rest.trim_start();
-        } else if let Some(rest) = s.strip_prefix(":-") {
-            s = rest.trim_start();
-        } else if let Some(rest) = s.strip_prefix("- ") {
-            s = rest.trim_start();
-        } else if s == "-" {
-            s = "";
-        }
-        let mut s2 = s.to_string();
-        // If we didn't load a fallback font with good glyph coverage, replace
-        // common box drawing characters with ASCII equivalents to avoid box
-        // glyph placeholders.
-        if self.font_fallback.is_none() {
-            s2 = s2
-                .replace(['═', '─'], "-")
-                .replace(['│', '║'], "|")
-                .replace(['┌', '┐', '└', '┘'], "+");
-        }
-        s2
     }
 
     fn collect_completions(&self, prefix: &str) -> Vec<String> {
@@ -509,435 +363,30 @@ impl SlircApp {
     }
 
     pub(crate) fn handle_user_command(&mut self) -> bool {
-        let s = self.message_input.trim();
-        if !s.starts_with('/') {
-            return false;
-        }
-
-        // Remove leading '/'
-        let cmdline = s[1..].trim();
-        let mut parts = cmdline.split_whitespace();
-        let cmd = parts.next().unwrap_or("").to_lowercase();
-        match cmd.as_str() {
-            "join" | "j" => {
-                if let Some(chan) = parts.next() {
-                    let channel = if chan.starts_with('#') || chan.starts_with('&') {
-                        chan.to_string()
-                    } else {
-                        format!("#{}", chan)
-                    };
-                    let _ = self.action_tx.send(BackendAction::Join(channel));
-                } else {
-                    self.system_log.push("Usage: /join <channel>".into());
-                }
-            }
-            "part" | "p" => {
-                if let Some(chan) = parts.next() {
-                    let channel = if chan.starts_with('#') || chan.starts_with('&') {
-                        chan.to_string()
-                    } else {
-                        format!("#{}", chan)
-                    };
-                    let reason = parts.collect::<Vec<_>>().join(" ");
-                    let _ = self.action_tx.send(BackendAction::Part {
-                        channel,
-                        message: if reason.is_empty() {
-                            None
-                        } else {
-                            Some(reason)
-                        },
-                    });
-                } else {
-                    // If no channel was provided, part the active buffer if it's a channel
-                    if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
-                        let channel = self.active_buffer.clone();
-                        let reason = parts.collect::<Vec<_>>().join(" ");
-                        let _ = self.action_tx.send(BackendAction::Part {
-                            channel,
-                            message: if reason.is_empty() {
-                                None
-                            } else {
-                                Some(reason)
-                            },
-                        });
-                    } else {
-                        self.system_log.push("Usage: /part <channel>".into());
-                    }
-                }
-            }
-            "msg" | "privmsg" => {
-                if let Some(target) = parts.next() {
-                    let text = parts.collect::<Vec<_>>().join(" ");
-                    if text.is_empty() {
-                        self.system_log
-                            .push("Usage: /msg <target> <message>".into());
-                    } else {
-                        let target = target.to_string();
-                        let _ = self
-                            .action_tx
-                            .send(BackendAction::SendMessage { target, text });
-                    }
-                } else {
-                    self.system_log
-                        .push("Usage: /msg <target> <message>".into());
-                }
-            }
-            "me" => {
-                let text = parts.collect::<Vec<_>>().join(" ");
-                if text.is_empty() {
-                    self.system_log.push("Usage: /me <action>".into());
-                } else {
-                    // Use ACTION CTCP encoding
-                    let action_text = format!("\x01ACTION {}\x01", text);
-                    // Send to active buffer
-                    if self.active_buffer != "System" {
-                        let target = self.active_buffer.clone();
-                        let _ = self.action_tx.send(BackendAction::SendMessage {
-                            target,
-                            text: action_text,
-                        });
-                    } else {
-                        self.system_log
-                            .push("/me can only be used in a channel or PM".into());
-                    }
-                }
-            }
-            "whois" | "w" => {
-                if let Some(target) = parts.next() {
-                    let _ = self
-                        .action_tx
-                        .send(BackendAction::Whois(target.to_string()));
-                } else {
-                    self.system_log.push("Usage: /whois <nick>".into());
-                }
-            }
-            "topic" | "t" => {
-                // If no argument provided, show current topic for active buffer
-                let new_topic = parts.collect::<Vec<_>>().join(" ");
-                if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
-                    if new_topic.is_empty() {
-                        if let Some(buffer) = self.buffers.get(&self.active_buffer) {
-                            if buffer.topic.is_empty() {
-                                self.system_log
-                                    .push(format!("No topic set for {}", self.active_buffer));
-                            } else {
-                                self.system_log.push(format!(
-                                    "Topic for {}: {}",
-                                    self.active_buffer, buffer.topic
-                                ));
-                            }
-                        }
-                    } else {
-                        let _ = self.action_tx.send(BackendAction::SetTopic {
-                            channel: self.active_buffer.clone(),
-                            topic: new_topic,
-                        });
-                    }
-                } else {
-                    self.system_log
-                        .push("/topic can only be used in a channel".into());
-                }
-            }
-            "kick" | "k" => {
-                if let Some(nick) = parts.next() {
-                    let reason = parts.collect::<Vec<_>>().join(" ");
-                    if self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&') {
-                        let _ = self.action_tx.send(BackendAction::Kick {
-                            channel: self.active_buffer.clone(),
-                            nick: nick.to_string(),
-                            reason: if reason.is_empty() {
-                                None
-                            } else {
-                                Some(reason)
-                            },
-                        });
-                    } else {
-                        self.system_log
-                            .push("/kick can only be used in a channel".into());
-                    }
-                } else {
-                    self.system_log.push("Usage: /kick <nick> [reason]".into());
-                }
-            }
-            "nick" => {
-                if let Some(newnick) = parts.next() {
-                    // Update locally and send to server
-                    self.nickname_input = newnick.to_string();
-                    let _ = self
-                        .action_tx
-                        .send(BackendAction::Nick(newnick.to_string()));
-                } else {
-                    self.system_log.push("Usage: /nick <newnick>".into());
-                }
-            }
-            "quit" | "exit" => {
-                let reason = parts.collect::<Vec<_>>().join(" ");
-                let _ = self
-                    .action_tx
-                    .send(BackendAction::Quit(if reason.is_empty() {
-                        None
-                    } else {
-                        Some(reason)
-                    }));
-            }
-            "help" => {
-                self.system_log.push("Supported commands: /join, /part, /msg, /me, /nick, /quit, /whois, /topic, /kick".into());
-            }
-            unknown => {
-                self.system_log
-                    .push(format!("Unknown command: /{}", unknown));
-            }
-        }
-        true
+        commands::handle_user_command(
+            &self.message_input,
+            &self.active_buffer,
+            &self.buffers,
+            &self.action_tx,
+            &mut self.system_log,
+            &mut self.nickname_input,
+        )
     }
 
     pub fn process_events(&mut self) {
-        // Drain all pending events from the backend
-        while let Ok(event) = self.event_rx.try_recv() {
-            match event {
-                GuiEvent::Connected => {
-                    self.is_connected = true;
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log
-                        .push(format!("[{}] ✓ Connected and registered!", ts));
-                    // Expand the server in the network list and show a status toast
-                    self.expanded_networks.insert(self.server_input.clone());
-                    self.status_messages.push((
-                        format!("Connected to {}", self.server_input),
-                        std::time::Instant::now(),
-                    ));
-                }
-
-                GuiEvent::Disconnected(reason) => {
-                    self.is_connected = false;
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log
-                        .push(format!("[{}] ✗ Disconnected: {}", ts, reason));
-                    self.status_messages
-                        .push(("Disconnected".into(), std::time::Instant::now()));
-                }
-
-                GuiEvent::Error(msg) => {
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log.push(format!("[{}] ⚠ Error: {}", ts, msg));
-                    self.status_messages
-                        .push((format!("Error: {}", msg), std::time::Instant::now()));
-                }
-                GuiEvent::NickChanged { old, new } => {
-                    // Update user lists in all buffers where the old nick existed
-                    for (buffer_name, buffer) in self.buffers.iter_mut() {
-                        if buffer.users.iter().any(|u| u.nick == old) {
-                            for user in buffer.users.iter_mut() {
-                                if user.nick == old {
-                                    user.nick = new.clone();
-                                }
-                            }
-                            let ts = Local::now().format("%H:%M:%S").to_string();
-                            let nick_msg = RenderedMessage::new(
-                                ts.clone(),
-                                "*".into(),
-                                format!("{} is now known as {}", old, new),
-                            )
-                            .with_type(MessageType::NickChange);
-                            let is_active = *buffer_name == self.active_buffer;
-                            buffer.add_message(nick_msg, is_active, false);
-                        }
-                    }
-                    // Update the UI nickname field when the server acknowledges it
-                    self.nickname_input = new.clone();
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log
-                        .push(format!("[{}] Nick changed to {} (was: {})", ts, new, old));
-                }
-
-                GuiEvent::RawMessage(msg) => {
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log.push(format!("[{}] {}", ts, msg));
-                    // Keep log from growing too large
-                    if self.system_log.len() > 500 {
-                        self.system_log.remove(0);
-                    }
-                }
-
-                GuiEvent::MessageReceived {
-                    target,
-                    sender,
-                    text,
-                } => {
-                    // If it's a PM, the target is the sender (for display)
-                    let buffer_name = if target.starts_with('#') || target.starts_with('&') {
-                        target.clone()
-                    } else {
-                        // Private message - use sender as buffer name
-                        sender.clone()
-                    };
-
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    let mention = text.contains(&self.nickname_input);
-                    let is_own_msg = sender == self.nickname_input;
-                    let active = self.active_buffer.clone();
-                    let buffer = self.ensure_buffer(&buffer_name);
-                    let is_active = active == buffer_name;
-                    let msg_type = if text.starts_with("\x01ACTION ") && text.ends_with('\x01') {
-                        MessageType::Action
-                    } else if sender.starts_with('-') && sender.ends_with('-') {
-                        // Backend marks NOTICE messages with -<sender>- as a sender string
-                        MessageType::Notice
-                    } else {
-                        MessageType::Normal
-                    };
-                    let msg = RenderedMessage::new(ts.clone(), sender.clone(), text.clone())
-                        .with_type(msg_type);
-                    buffer.add_message(msg, is_active || is_own_msg, mention);
-                    // Keep user list updated if a new nick speaks
-                    if (buffer_name.starts_with('#') || buffer_name.starts_with('&'))
-                        && !buffer.users.iter().any(|u| u.nick == sender)
-                    {
-                        buffer.users.push(UserInfo {
-                            nick: sender.clone(),
-                            prefix: None,
-                        });
-                        Self::sort_users(&mut buffer.users[..]);
-                    }
-                    // Unread/highlight handled by ChannelBuffer::add_message
-                }
-
-                GuiEvent::JoinedChannel(channel) => {
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log
-                        .push(format!("[{}] ✓ Joined {}", ts, channel));
-                    self.status_messages
-                        .push((format!("Joined {}", channel), std::time::Instant::now()));
-                    let buffer = self.ensure_buffer(&channel);
-                    buffer.clear_unread();
-                    buffer.has_highlight = false;
-                    self.active_buffer = channel;
-                }
-
-                GuiEvent::PartedChannel(channel) => {
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    self.system_log.push(format!("[{}] ← Left {}", ts, channel));
-                    self.status_messages
-                        .push((format!("Left {}", channel), std::time::Instant::now()));
-                    self.buffers.remove(&channel);
-                    self.buffers_order.retain(|b| b != &channel);
-                    if self.active_buffer == channel {
-                        self.active_buffer = "System".into();
-                    }
-                }
-
-                GuiEvent::UserJoined { channel, nick } => {
-                    let is_active = self.active_buffer == channel;
-                    let buffer = self.ensure_buffer(&channel);
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    let join_msg =
-                        RenderedMessage::new(ts.clone(), "→".into(), format!("{} joined", nick))
-                            .with_type(MessageType::Join);
-                    buffer.add_message(join_msg, is_active, false);
-                    if !buffer.users.iter().any(|u| u.nick == nick) {
-                        buffer.users.push(UserInfo {
-                            nick: nick.clone(),
-                            prefix: None,
-                        });
-                        Self::sort_users(&mut buffer.users[..]);
-                    }
-                    // Unread handled by add_message
-                }
-
-                GuiEvent::UserParted {
-                    channel,
-                    nick,
-                    message,
-                } => {
-                    let is_active = self.active_buffer == channel;
-                    let buffer = self.ensure_buffer(&channel);
-                    let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    let part_msg = RenderedMessage::new(
-                        ts.clone(),
-                        "←".into(),
-                        format!("{} left{}", nick, msg),
-                    )
-                    .with_type(MessageType::Part);
-                    buffer.add_message(part_msg, is_active, false);
-                    buffer.users.retain(|u| u.nick != nick);
-                    // Unread handled by add_message
-                }
-
-                GuiEvent::UserQuit { nick, message } => {
-                    // Remove the user from all channels and add quit message
-                    let active = self.active_buffer.clone();
-                    let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-
-                    for (channel_name, buffer) in self.buffers.iter_mut() {
-                        if buffer.users.iter().any(|u| u.nick == nick) {
-                            let quit_msg = RenderedMessage::new(
-                                ts.clone(),
-                                "⇐".into(),
-                                format!("{} quit{}", nick, msg),
-                            )
-                            .with_type(MessageType::Quit);
-                            let is_active = active == *channel_name;
-                            buffer.add_message(quit_msg, is_active, false);
-                            buffer.users.retain(|u| u.nick != nick);
-                        }
-                    }
-                }
-
-                GuiEvent::Motd(line) => {
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    // Clean up MOTD line formatting a bit for readability
-                    let cleaned = self.clean_motd_line(&line);
-                    if cleaned.is_empty() {
-                        self.system_log.push(format!("[{}] MOTD:", ts));
-                    } else {
-                        self.system_log.push(format!("[{}] MOTD: {}", ts, cleaned));
-                    }
-                }
-
-                GuiEvent::Topic { channel, topic } => {
-                    let active = self.active_buffer.clone();
-                    let buffer = self.ensure_buffer(&channel);
-                    buffer.topic = topic.clone();
-                    let ts = Local::now().format("%H:%M:%S").to_string();
-                    let topic_msg =
-                        RenderedMessage::new(ts.clone(), "*".into(), format!("Topic: {}", topic))
-                            .with_type(MessageType::Topic);
-                    buffer.add_message(topic_msg, active == channel, false);
-                    // Unread handled by add_message
-                }
-
-                GuiEvent::Names { channel, names } => {
-                    let buffer = self.ensure_buffer(&channel);
-                    buffer.users = names;
-                    Self::sort_users(&mut buffer.users[..]);
-                }
-                GuiEvent::UserMode {
-                    channel,
-                    nick,
-                    prefix,
-                    added,
-                } => {
-                    let buffer = self.ensure_buffer(&channel);
-                    // Find the user and update the prefix; if the user isn't present,
-                    // add them (some servers may send MODE before a NAMES refresh).
-                    if let Some(user) = buffer.users.iter_mut().find(|u| u.nick == nick) {
-                        if added {
-                            user.prefix = prefix;
-                        } else if user.prefix == prefix {
-                            user.prefix = None;
-                        }
-                    } else if added {
-                        buffer.users.push(UserInfo {
-                            nick: nick.clone(),
-                            prefix,
-                        });
-                    }
-                    Self::sort_users(&mut buffer.users[..]);
-                }
-            }
-        }
+        events::process_events(
+            &self.event_rx,
+            &mut self.is_connected,
+            &mut self.buffers,
+            &mut self.buffers_order,
+            &mut self.active_buffer,
+            &mut self.nickname_input,
+            &mut self.system_log,
+            &mut self.expanded_networks,
+            &mut self.status_messages,
+            &self.server_input,
+            &self.font_fallback,
+        );
     }
 }
 
@@ -1361,7 +810,7 @@ impl eframe::App for SlircApp {
                         };
 
                         let is_op = buffer.users.iter().any(|u| {
-                            u.nick == self.nickname_input && Self::prefix_rank(u.prefix) >= 3
+                            u.nick == self.nickname_input && ui::theme::prefix_rank(u.prefix) >= 3
                         });
 
                         ui.horizontal(|ui| {
@@ -1447,7 +896,7 @@ impl eframe::App for SlircApp {
                                         );
                                         ui.label(
                                             egui::RichText::new(&msg.sender)
-                                                .color(Self::nick_color(&msg.sender)),
+                                                .color(ui::theme::nick_color(&msg.sender)),
                                         );
                                         ui.label(
                                             egui::RichText::new(action)
@@ -1504,17 +953,15 @@ impl eframe::App for SlircApp {
                                         let nick_display = format!("{}{}:", prefix, msg.sender);
                                         ui.label(
                                             egui::RichText::new(nick_display)
-                                                .color(Self::nick_color(&msg.sender)),
+                                                .color(ui::theme::nick_color(&msg.sender)),
                                         );
                                         if mention {
-                                            self.render_message_text(
-                                                ui,
-                                                buffer,
-                                                &msg.text,
-                                                Some(egui::Color32::from_rgb(255, 100, 100)),
+                                            ui.label(
+                                                egui::RichText::new(&msg.text)
+                                                    .color(egui::Color32::from_rgb(255, 100, 100)),
                                             );
                                         } else {
-                                            self.render_message_text(ui, buffer, &msg.text, None);
+                                            ui.label(&msg.text);
                                         }
                                     });
                                 }
@@ -1559,7 +1006,7 @@ impl eframe::App for SlircApp {
                                     .map(|b| {
                                         b.users.iter().any(|u| {
                                             u.nick == self.nickname_input
-                                                && Self::prefix_rank(u.prefix) >= 3
+                                                && ui::theme::prefix_rank(u.prefix) >= 3
                                         })
                                     })
                                     .unwrap_or(false);
@@ -1671,7 +1118,7 @@ impl eframe::App for SlircApp {
                                         );
                                         ui.label(
                                             egui::RichText::new(&msg.sender)
-                                                .color(Self::nick_color(&msg.sender)),
+                                                .color(ui::theme::nick_color(&msg.sender)),
                                         );
                                         ui.label(
                                             egui::RichText::new(action)
@@ -1690,7 +1137,7 @@ impl eframe::App for SlircApp {
                                                 .color(egui::Color32::LIGHT_BLUE)
                                                 .strong(),
                                         );
-                                        self.render_message_text(ui, buffer, &msg.text, None);
+                                        ui.label(&msg.text);
                                     });
                                 }
                             }

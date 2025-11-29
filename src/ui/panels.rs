@@ -62,7 +62,7 @@ pub fn render_channel_list(
                         let resp = ui.selectable_label(selected, rich);
                         if resp.clicked() {
                             *active_buffer = name.clone();
-                            if let Some(buf) = buffers.get(name) {
+                            if let Some(_buf) = buffers.get(name) {
                                 // Note: We can't mutate here, caller handles this
                             }
                         }
@@ -88,8 +88,8 @@ pub fn render_channel_list(
 pub fn render_user_list(
     ctx: &egui::Context,
     buffer: &ChannelBuffer,
-    active_buffer: &str,
-    nickname_input: &str,
+    _active_buffer: &str,
+    _nickname_input: &str,
     context_menu_visible: &mut bool,
     context_menu_target: &mut Option<String>,
 ) {

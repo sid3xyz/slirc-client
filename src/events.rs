@@ -19,7 +19,7 @@ pub fn process_events(
     expanded_networks: &mut HashSet<String>,
     status_messages: &mut Vec<(String, std::time::Instant)>,
     server_input: &str,
-    clean_motd_fn: &dyn Fn(&str) -> String,
+    font_fallback: &Option<String>,
 ) {
     // Drain all pending events from the backend
     while let Ok(event) = event_rx.try_recv() {
@@ -210,7 +210,7 @@ pub fn process_events(
             GuiEvent::Motd(line) => {
                 let ts = Local::now().format("%H:%M:%S").to_string();
                 // Clean up MOTD line formatting a bit for readability
-                let cleaned = clean_motd_fn(&line);
+                let cleaned = clean_motd_line(&line, font_fallback);
                 if cleaned.is_empty() {
                     system_log.push(format!("[{}] MOTD:", ts));
                 } else {
@@ -277,4 +277,26 @@ fn ensure_buffer<'a>(
         }
     }
     buffers.get_mut(name).unwrap()
+}
+
+/// Clean MOTD line formatting.
+pub fn clean_motd_line(line: &str, font_fallback: &Option<String>) -> String {
+    let mut s = line.trim_start();
+    if let Some(rest) = s.strip_prefix(":- ") {
+        s = rest.trim_start();
+    } else if let Some(rest) = s.strip_prefix(":-") {
+        s = rest.trim_start();
+    } else if let Some(rest) = s.strip_prefix("- ") {
+        s = rest.trim_start();
+    } else if s == "-" {
+        s = "";
+    }
+    let mut s2 = s.to_string();
+    if font_fallback.is_none() {
+        s2 = s2
+            .replace(['═', '─'], "-")
+            .replace(['│', '║'], "|")
+            .replace(['┌', '┐', '└', '┘'], "+");
+    }
+    s2
 }

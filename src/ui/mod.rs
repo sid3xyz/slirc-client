@@ -7,14 +7,12 @@
 //! - `dialogs`: Modal dialogs (help, network manager, etc.)
 //! - `theme`: Color schemes and styling utilities
 
-mod dialogs;
+pub mod dialogs;
 mod messages;
 mod panels;
-mod theme;
+pub mod theme;
 mod toolbar;
 
-pub use dialogs::*;
-pub use messages::*;
-pub use panels::*;
-pub use theme::*;
-pub use toolbar::*;
+// Re-export commonly used items
+pub use panels::sort_users;
+pub use theme::{nick_color, prefix_rank};

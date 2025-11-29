@@ -7,7 +7,7 @@ use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 
 /// Render the central message panel with topic bar and message list.
 pub fn render_messages(
-    ctx: &egui::Context,
+    _ctx: &egui::Context,
     ui: &mut egui::Ui,
     active_buffer: &str,
     buffers: &std::collections::HashMap<String, ChannelBuffer>,
@@ -91,7 +91,7 @@ fn render_message(
     ui: &mut egui::Ui,
     msg: &RenderedMessage,
     buffer: &ChannelBuffer,
-    nickname: &str,
+    _nickname: &str,
     mention: bool,
 ) {
     match &msg.msg_type {
