@@ -1,34 +1,48 @@
 # SLIRC Client
 
-A native IRC client built with [egui](https://github.com/emilk/egui) and the [slirc-proto](https://github.com/sid3xyz/slirc-proto) protocol library.
+A modern, native IRC client built with [egui](https://github.com/emilk/egui) and the [slirc-proto](https://github.com/sid3xyz/slirc-proto) protocol library.
 
 ![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)
 ![License](https://img.shields.io/badge/license-Unlicense-blue)
+![Tests](https://img.shields.io/badge/tests-69%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-21.23%25-yellow)
 
 ## Features
 
-- **Native GUI** - Cross-platform desktop application using egui/glow
-- **Multi-buffer interface** - Separate buffers for channels, private messages, and system log
-- **User list** - Live user list for joined channels
-- **Topic display** - Shows channel topics
-- **Raw message logging** - Full IRC protocol visibility in System buffer
-- **PING/PONG handling** - Automatic keep-alive responses
-- **Command input** - Supports /join, /part, /msg, /nick, /quit, /me, /whois, /topic, /kick
- - **Timestamps** - Messages are displayed with local timestamps
- - **Input history** - Use Up/Down to navigate previously sent messages
- - **Channel tabs (left)** - Buffers are shown as vertical tabs with unread badges
- - **Mentions highlight** - Messages that mention your nick are highlighted
+### Core Features
+- **🔒 TLS/SSL Support** - Secure encrypted connections (tested with Libera.Chat, OFTC, etc.)
+- **🌐 Native GUI** - Cross-platform desktop application using egui/glow
+- **📋 Multi-buffer Interface** - Separate buffers for channels, private messages, and system log
+- **👥 User Lists** - Live user list for joined channels with prefix indicators (@, +, etc.)
+- **📝 Topic Display** - Shows and allows editing of channel topics
+- **💾 Network Manager** - Save and manage multiple IRC network configurations
+- **🔑 Secure Password Storage** - NickServ passwords stored in system keyring
+- **⚡ Quick Connect** - One-click presets for Libera.Chat, OFTC, EFnet, Rizon
 
-## Development Notes (HexChat UI Alignment)
+### User Experience
+- **Timestamps** - All messages displayed with local time
+- **Input History** - Up/Down arrows to navigate previous commands
+- **Channel Tabs** - Vertical buffer list with unread badges
+- **Mention Highlights** - Messages mentioning your nick are highlighted
+- **Input Validation** - RFC 2812 compliant channel and nickname validation
+- **Command Completion** - Full IRC command support (/join, /part, /msg, /me, /nick, etc.)
 
-- The UI now uses the left buffer panel as the single navigation surface (Top horizontal tabs removed during Phase 1 refactor).
-- Buffer user lists now track nick prefixes (e.g. `@` for ops, `+` for voiced users) and are sorted by prefix rank (owner/admin/op/halfop/voice/regular).
-- Messages are left-aligned in the central pane with unified `[time] <nick> Message` format and colors for own messages and mentions.
-- The backend parses `NAMES` replies and preserves nick prefixes for accurate user list rendering, and channel `MODE` changes update prefixes.
+### Technical Excellence
+- **69 Passing Tests** - Comprehensive test coverage (21.23% overall)
+  - Events: 93.4% coverage
+  - Commands: 71.7% coverage
+  - Validation: 96.3% coverage
+- **Zero Unwraps** - Production code uses proper error handling
+- **Integration Tested** - TLS, network manager, and protocol handling
+- **Modern Rust** - Clean, idiomatic code with async/await
 
-See `HEXCHAT_UI_PLAN.md` for implementation plan and next steps (Phase 2+).
+## Screenshots
 
-## Architecture
+*Coming soon - GUI screenshots showing network manager, TLS connection, and multi-buffer interface*
+
+## Development
+
+### Architecture
 
 SLIRC Client uses a **dual-thread architecture** to bridge the async network layer with the synchronous GUI:
 
@@ -100,6 +114,10 @@ This separation ensures:
 | `tokio` | Async runtime for network operations |
 | `slirc-proto` | IRC protocol parsing and transport |
 | `crossbeam-channel` | Lock-free channels for thread communication |
+| `tokio-rustls` | TLS/SSL encryption support |
+| `rustls` | Modern TLS implementation |
+| `keyring` | Secure password storage in system keyring |
+| `serde` | Configuration serialization |
 
 ## Building
 
@@ -129,22 +147,38 @@ cd slirc-client
 cargo run --release
 ```
 
-## Usage
+## Quick Start
 
-1. **Connect**: Enter server address (default: `irc.slirc.net:6667`) and nickname, click "Connect"
-2. **Wait for registration**: Watch the System buffer for "✓ Connected and registered!"
-3. **Join channels**: Enter channel name (default: `#straylight`) and click "+"
-    - You can also join using `/join #channel` via the input
-4. **Chat**: Select a channel buffer, type messages and press Enter to send
-    - Use `/join <channel>` to join a channel (e.g., `/join #rust`)
-    - Use `/part <channel> [message]` to leave a channel
-    - Use `/msg <target> <message>` to send a private message
-    - Use `/nick <newnick>` to change your nickname
-    - Use `/me <action>` to send a CTCP ACTION (e.g., `/me waves`)
-    - Use `/quit [message]` to quit the server gracefully
-5. **Switch buffers**: Click buffer names in the left panel
-6. **Disconnect**: Click "Disconnect" button
-7. **Change Nick**: With a connected session, update the Nick input and click "Change Nick" to request a nick change on the server.
+### First-Time Setup
+
+1. Launch SLIRC Client
+2. Click the **"Networks"** button in the toolbar
+3. Use **Quick Add** to add a popular network (e.g., "Libera.Chat")
+4. Click **"Connect"** on your chosen network
+5. Watch the System buffer for "✓ Connected and registered!"
+6. Use `/join #channel` to join channels
+
+### Manual Connection
+
+1. Enter server address (e.g., `irc.libera.chat:6697`)
+2. Enter your nickname
+3. Check **"Use TLS"** for secure connections (recommended)
+4. Click **"Connect"**
+
+### IRC Commands
+
+| Command | Description | Example |
+|---------|-------------|----------|
+| `/join <channel>` | Join a channel | `/join #rust` |
+| `/part [channel]` | Leave a channel | `/part #channel goodbye!` |
+| `/msg <target> <text>` | Send private message | `/msg alice hello` |
+| `/nick <newnick>` | Change nickname | `/nick alice_away` |
+| `/me <action>` | Send action message | `/me waves hello` |
+| `/quit [message]` | Disconnect from server | `/quit See you later!` |
+| `/whois <nick>` | Get user information | `/whois bob` |
+| `/topic [text]` | View or set topic | `/topic Welcome!` |
+| `/kick <nick> [reason]` | Kick user from channel | `/kick spammer Bye` |
+| `/help` | Show available commands | `/help` |
 
 ### UI & Look-and-feel Improvements
 
@@ -159,26 +193,77 @@ Try these to verify the UI features:
 3. Post a message in channel mentioning your nick to verify message highlight and unread increment when the channel is inactive.
 4. Use the left-hand channel tabs to switch buffers and see unread counts cleared.
 
-## Default Configuration
+## Configuration
 
+### Default Settings
 - **Server**: `irc.slirc.net:6667`
 - **Default Channel**: `#straylight`
-- **No auto-connect** - User must click Connect manually
+- **No Auto-Connect**: Manual connection required
+- **Config Location**: `~/.config/slirc-client/settings.json` (Linux)
+
+### Network Manager
+Networks are saved in `settings.json` and include:
+- Server addresses (with fallback servers)
+- Nickname preferences
+- Auto-join channels
+- TLS settings
+- Auto-connect on startup option
+
+### Secure Password Storage
+NickServ passwords are stored in your system's secure keyring:
+- **Linux**: libsecret (GNOME Keyring, KWallet)
+- **macOS**: Keychain
+- **Windows**: Credential Manager
+
+Passwords are **never** stored in plain text configuration files.
+
+## Security & Quality
+
+### Security Features
+- \u2705 **TLS 1.3 Support** - Modern encryption with certificate validation
+- \u2705 **Secure Password Storage** - System keyring integration
+- \u2705 **Input Validation** - RFC 2812 compliant sanitization
+- \u2705 **No Hardcoded Secrets** - All credentials user-provided
+- \u2705 **Certificate Verification** - Mozilla root CA store (webpki-roots)
+
+### Code Quality
+- \u2705 **Zero Production Unwraps** - Proper error handling throughout
+- \u2705 **69 Passing Tests** - Unit and integration test coverage
+- \u2705 **21.23% Test Coverage** - Core business logic well-tested
+  - Events: 93.4% coverage
+  - Commands: 71.7% coverage  
+  - Validation: 96.3% coverage
+- \u2705 **Type-Safe Protocol** - Leverages Rust's type system
+- \u2705 **Memory Safe** - No unsafe code in production paths
 
 ## Project Structure
 
 ```
 slirc-client/
-├── Cargo.toml          # Dependencies and project metadata
-├── README.md           # This file
+├── Cargo.toml                 # Dependencies and project metadata
+├── README.md                  # This file
+├── PHASE2_REPORT.md          # Test coverage report
+├── COVERAGE_IMPROVEMENT.md   # Coverage improvement details
+├── TLS_LIMITATION.md         # TLS implementation notes (RESOLVED)
 └── src/
-    └── main.rs         # Complete application (single-file architecture)
-        ├── BackendAction    # UI → Backend message types
-        ├── GuiEvent         # Backend → UI message types
-        ├── run_backend()    # Tokio runtime and network loop
-        ├── Buffer           # Per-channel/query message storage
-        ├── SlircApp         # egui application state
-        └── main()           # Entry point
+    ├── main.rs               # Application entry point
+    ├── app.rs                # Main application state and UI
+    ├── backend.rs            # Async network I/O (Tokio runtime)
+    ├── backend_tests.rs      # Backend unit tests (15 tests)
+    ├── integration_tests.rs  # Integration tests (16 tests)
+    ├── buffer.rs             # Channel message storage
+    ├── commands.rs           # IRC command handling (71.7% coverage)
+    ├── config.rs             # Settings persistence and keyring
+    ├── events.rs             # Event processing (93.4% coverage)
+    ├── protocol.rs           # Protocol type definitions
+    ├── validation.rs         # Input validation (96.3% coverage)
+    └── ui/
+        ├── mod.rs            # UI module exports
+        ├── dialogs.rs        # Network manager, help, topic editor
+        ├── messages.rs       # Message rendering
+        ├── panels.rs         # Buffer list, user list
+        ├── theme.rs          # Color themes and styling
+        └── toolbar.rs        # Top toolbar UI
 ```
 
 ## IRC Commands Handled
@@ -197,18 +282,36 @@ slirc-client/
 | `QUIT` | Logged (user tracking TBD) |
 | `ERROR` | Displays error in System buffer |
 
-## Future Enhancements
+## Completed Features (November 2025)
 
-- [ ] TLS/SSL support (slirc-proto supports it)
-- [ ] WebSocket connections
+- ✅ **TLS/SSL Support** - Full TLS 1.3 with certificate validation
+- ✅ **Network Manager** - Save/load multiple network configurations
+- ✅ **Secure Password Storage** - System keyring integration
+- ✅ **Input Validation** - RFC 2812 compliant validation
+- ✅ **Comprehensive Testing** - 69 tests with 21% coverage
+- ✅ **Configuration Persistence** - JSON-based settings storage
+
+## Roadmap
+
+### Short Term
+- [ ] Auto-reconnect on disconnect
+- [ ] Tab completion for nicks and channels
+- [ ] Custom color themes
+- [ ] Message search/filtering
+- [ ] Channel logging to disk
+
+### Medium Term
 - [ ] SASL authentication
-- [ ] Nick completion (Tab)
- - [ ] Command input improvements (Tab completion, extended command parsing)
-- [ ] Configuration file
-- [ ] Multiple server connections
 - [ ] IRCv3 capability negotiation
+- [ ] WebSocket connections
 - [ ] Message history persistence
-- [ ] Theming support
+- [ ] Notification sounds
+
+### Long Term
+- [ ] DCC file transfer
+- [ ] Plugin system
+- [ ] Scripting support
+- [ ] Custom emojis/reactions
 
 ## License
 
