@@ -36,7 +36,16 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
 
                         match TcpStream::connect(&addr).await {
                             Ok(stream) => {
-                                let mut t = Transport::tcp(stream);
+                                let mut t = match Transport::tcp(stream) {
+                                    Ok(t) => t,
+                                    Err(e) => {
+                                        let _ = event_tx.send(GuiEvent::Error(format!(
+                                            "Failed to create transport: {}",
+                                            e
+                                        )));
+                                        continue;
+                                    }
+                                };
 
                                 // Send NICK
                                 let nick_msg = Message::nick(&nickname);
