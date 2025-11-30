@@ -33,8 +33,8 @@ pub fn render_channel_list(
                 .stroke(Stroke::new(1.0, theme.border_medium)),
         )
         .show(ctx, |ui| {
-            // Header
-            ui.add_space(16.0);
+            // Header with separator
+            ui.add_space(12.0);
             ui.horizontal(|ui| {
                 ui.add_space(16.0);
                 ui.label(
@@ -43,6 +43,17 @@ pub fn render_channel_list(
                         .strong()
                         .color(theme.text_muted),
                 );
+            });
+            ui.add_space(6.0);
+            
+            // Subtle separator line
+            ui.horizontal(|ui| {
+                ui.add_space(16.0);
+                let sep_rect = egui::Rect::from_min_size(
+                    ui.cursor().min,
+                    egui::vec2(ui.available_width() - 32.0, 1.0),
+                );
+                ui.painter().rect_filled(sep_rect, 0.0, theme.surface[3]);
             });
             ui.add_space(8.0);
 
@@ -80,6 +91,9 @@ pub fn render_channel_list(
                             (0, false, false)
                         };
 
+                        // Add small spacing between items for breathing room
+                        ui.add_space(2.0);
+                        
                         let clicked = render_channel_item(
                             ui,
                             name,
@@ -96,6 +110,8 @@ pub fn render_channel_list(
                             *context_menu_visible = true;
                             *context_menu_target = Some(name.clone());
                         }
+                        
+                        ui.add_space(2.0);
                     }
                 });
         });
@@ -132,16 +148,16 @@ fn render_channel_item(
 
     // Draw background with left accent for selected
     if selected || hovered {
-        ui.painter().rect_filled(rect, 0.0, bg_color);
+        ui.painter().rect_filled(rect, 6.0, bg_color);
     }
 
     // Selected indicator bar on left
     if selected {
         let indicator_rect = egui::Rect::from_min_size(
-            rect.min,
-            egui::vec2(3.0, height),
+            egui::pos2(rect.min.x + 8.0, rect.center().y - 10.0),
+            egui::vec2(3.0, 20.0),
         );
-        ui.painter().rect_filled(indicator_rect, 0.0, theme.accent);
+        ui.painter().rect_filled(indicator_rect, 1.5, theme.accent);
     }
 
     // Icon
@@ -160,10 +176,10 @@ fn render_channel_item(
     };
 
     ui.painter().text(
-        egui::pos2(rect.min.x + 16.0, rect.center().y),
+        egui::pos2(rect.min.x + 20.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         icon,
-        egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        egui::FontId::new(15.0, egui::FontFamily::Proportional),
         icon_color,
     );
 
@@ -191,7 +207,7 @@ fn render_channel_item(
     };
 
     ui.painter().text(
-        egui::pos2(rect.min.x + 36.0, rect.center().y),
+        egui::pos2(rect.min.x + 44.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         display_name,
         font,
@@ -215,13 +231,17 @@ fn render_channel_item(
         let badge_font = egui::FontId::new(10.0, egui::FontFamily::Proportional);
         let galley = ui.fonts(|f| f.layout_no_wrap(badge_text, badge_font, Color32::WHITE));
 
-        let badge_width = galley.size().x.max(14.0) + 8.0;
-        let badge_height = 16.0;
+        let badge_width = galley.size().x.max(16.0) + 10.0;
+        let badge_height = 18.0;
         let badge_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.max.x - badge_width - 12.0, rect.center().y - badge_height / 2.0),
+            egui::pos2(rect.max.x - badge_width - 16.0, rect.center().y - badge_height / 2.0),
             egui::vec2(badge_width, badge_height),
         );
 
+        // Draw subtle shadow for depth
+        let shadow_rect = badge_rect.translate(egui::vec2(0.0, 1.0));
+        ui.painter().rect_filled(shadow_rect, badge_height / 2.0, Color32::from_black_alpha(20));
+        
         ui.painter().rect_filled(badge_rect, badge_height / 2.0, badge_color);
         ui.painter().galley(
             badge_rect.center() - galley.size() / 2.0,
@@ -306,7 +326,7 @@ fn render_user_section(
     context_menu_target: &mut Option<String>,
 ) {
     // Section header
-    ui.add_space(16.0);
+    ui.add_space(12.0);
     ui.horizontal(|ui| {
         ui.add_space(16.0);
         ui.label(
@@ -317,6 +337,17 @@ fn render_user_section(
         );
     });
     ui.add_space(4.0);
+    
+    // Subtle separator
+    ui.horizontal(|ui| {
+        ui.add_space(16.0);
+        let sep_rect = egui::Rect::from_min_size(
+            ui.cursor().min,
+            egui::vec2(ui.available_width() - 32.0, 1.0),
+        );
+        ui.painter().rect_filled(sep_rect, 0.0, theme.surface[3]);
+    });
+    ui.add_space(6.0);
 
     // Users in section
     for user in users {
@@ -343,7 +374,7 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
 
     // Hover background
     if hovered {
-        ui.painter().rect_filled(rect, 0.0, theme.surface[3]);
+        ui.painter().rect_filled(rect, 4.0, theme.surface[3]);
     }
 
     // Status dot
