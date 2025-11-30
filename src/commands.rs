@@ -14,7 +14,7 @@ pub fn handle_user_command(
     buffers: &std::collections::HashMap<String, crate::buffer::ChannelBuffer>,
     action_tx: &Sender<BackendAction>,
     system_log: &mut Vec<String>,
-    nickname_input: &mut String,
+    connection_nickname: &mut String,
 ) -> bool {
     let s = message_input.trim();
     if !s.starts_with('/') {
@@ -167,7 +167,7 @@ pub fn handle_user_command(
         "nick" => {
             if let Some(newnick) = parts.next() {
                 // Update locally and send to server
-                *nickname_input = newnick.to_string();
+                *connection_nickname = newnick.to_string();
                 let _ = action_tx.send(BackendAction::Nick(newnick.to_string()));
             } else {
                 system_log.push("Usage: /nick <newnick>".into());

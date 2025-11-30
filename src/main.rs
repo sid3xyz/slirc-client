@@ -79,9 +79,11 @@ mod tests {
 
         let app = SlircApp {
             state,
-            server_input: DEFAULT_SERVER.into(),
-            nickname_input: "tester".into(),
-            use_tls: false,
+            connection: crate::config::ConnectionConfig {
+                server: DEFAULT_SERVER.into(),
+                nickname: "tester".into(),
+                use_tls: false,
+            },
             action_tx,
             event_rx,
             input: crate::input_state::InputState::new(),
@@ -226,7 +228,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
@@ -273,20 +275,20 @@ mod tests {
         app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         // Set the message input to a topic change command and ensure the action is sent
-        app.input.message_input = String::from("/topic New Topic");
+        app.input.message_input = String::from("/topic hello world");
         assert!(crate::commands::handle_user_command(
             &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::SetTopic { channel, topic } => {
                 assert_eq!(channel, "#test");
-                assert_eq!(topic, "New Topic");
+                assert_eq!(topic, "hello world");
             }
             _ => panic!("Expected SetTopic action"),
         }
@@ -300,7 +302,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         assert!(app.state.system_log.iter().any(|l| l.contains("Displayed Topic")));
     }
@@ -319,7 +321,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
@@ -343,20 +345,20 @@ mod tests {
         app.state.active_buffer = "#test".into();
         app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
-        app.input.message_input = String::from("/me waves hello");
+        app.input.message_input = String::from("/me does something");
         assert!(crate::commands::handle_user_command(
             &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::SendMessage { target, text } => {
                 assert_eq!(target, "#test");
-                assert_eq!(text, "\x01ACTION waves hello\x01");
+                assert_eq!(text, "\x01ACTION does something\x01");
             }
             _ => panic!("Expected SendMessage action with CTCP ACTION"),
         }
@@ -366,7 +368,7 @@ mod tests {
     fn test_nick_command_sends_action() {
         let (mut app, _, action_rx) = create_test_app();
         app.state.is_connected = true;
-        app.nickname_input = "oldnick".into();
+        app.connection.nickname = "oldnick".into();
 
         app.input.message_input = String::from("/nick newnick");
         assert!(crate::commands::handle_user_command(
@@ -375,9 +377,9 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
-        assert_eq!(app.nickname_input, "newnick");
+        assert_eq!(app.connection.nickname, "newnick");
         let action = action_rx.try_recv().unwrap();
         match action {
             BackendAction::Nick(nick) => {
@@ -399,7 +401,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
@@ -422,7 +424,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
@@ -445,7 +447,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         assert!(app.state.system_log.len() > original_log_size);
         assert!(app.state.system_log.last().unwrap().contains("Supported commands"));
@@ -463,7 +465,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         assert!(app.state.system_log.len() > original_log_size);
         assert!(app.state.system_log.last().unwrap().contains("Unknown command"));
@@ -482,7 +484,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         assert!(app.state.system_log.len() > original_log_size);
         assert!(app.state.system_log.last().unwrap().contains("Usage"));
@@ -502,7 +504,7 @@ mod tests {
             &app.state.buffers,
             &app.action_tx,
             &mut app.state.system_log,
-            &mut app.nickname_input,
+            &mut app.connection.nickname,
         ));
         let action = action_rx.try_recv().unwrap();
         match action {
@@ -594,7 +596,7 @@ mod tests {
     fn test_nick_changed_event() {
         let (mut app, event_tx, _) = create_test_app();
         app.state.is_connected = true;
-        app.nickname_input = "alice".into();
+        app.connection.nickname = "alice".into();
         app.state.active_buffer = "#test".into();
         let mut buffer = ChannelBuffer::new();
         buffer.users.push(UserInfo {
@@ -612,7 +614,7 @@ mod tests {
 
         app.process_events();
 
-        assert_eq!(app.nickname_input, "alice_away");
+        assert_eq!(app.connection.nickname, "alice_away");
         let buffer = app.state.buffers.get("#test").unwrap();
         assert!(buffer.users.iter().any(|u| u.nick == "alice_away"));
         assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
@@ -623,7 +625,7 @@ mod tests {
     fn test_connected_event() {
         let (mut app, event_tx, _) = create_test_app();
         app.state.is_connected = false;
-        app.server_input = "irc.example.com".into();
+        app.connection.server = "irc.example.com".into();
         // Set state.server_name to simulate connection initiation
         app.state.server_name = "irc.example.com".into();
 
@@ -726,7 +728,7 @@ mod tests {
     fn test_message_received_creates_pm_buffer() {
         let (mut app, event_tx, _) = create_test_app();
         app.state.is_connected = true;
-        app.nickname_input = "me".into();
+        app.connection.nickname = "me".into();
 
         // PM from alice
         event_tx

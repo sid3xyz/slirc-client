@@ -10,7 +10,7 @@ use crate::backend::run_backend;
 use crate::buffer::ChannelBuffer;
 use crate::commands;
 use crate::config::{
-    load_nickserv_password, load_settings, save_settings, Settings, DEFAULT_SERVER,
+    ConnectionConfig, load_nickserv_password, load_settings, save_settings, Settings,
 };
 use crate::dialog_manager::DialogManager;
 use crate::events;
@@ -27,9 +27,7 @@ pub struct SlircApp {
     pub state: ClientState,
 
     // Connection settings (form inputs)
-    pub server_input: String,
-    pub nickname_input: String,
-    pub use_tls: bool,
+    pub connection: ConnectionConfig,
 
     // Channels for backend communication
     pub action_tx: Sender<BackendAction>,
@@ -95,9 +93,7 @@ impl SlircApp {
 
         let mut app = Self {
             state,
-            server_input: DEFAULT_SERVER.into(),
-            nickname_input: "slirc_user".into(),
-            use_tls: false,
+            connection: ConnectionConfig::default(),
 
             action_tx,
             event_rx,
@@ -121,10 +117,10 @@ impl SlircApp {
         // Restore settings if present
         if let Some(s) = settings {
             if !s.server.is_empty() {
-                app.server_input = s.server;
+                app.connection.server = s.server;
             }
             if !s.nick.is_empty() {
-                app.nickname_input = s.nick;
+                app.connection.nickname = s.nick;
             }
             if !s.history.is_empty() {
                 app.input.history = s.history;
@@ -176,8 +172,8 @@ impl SlircApp {
 
     fn save_networks(&self) {
         let settings = Settings {
-            server: self.server_input.clone(),
-            nick: self.nickname_input.clone(),
+            server: self.connection.server.clone(),
+            nick: self.connection.nickname.clone(),
             default_channel: self.input.channel_input.clone(),
             history: self.input.history.clone(),
             theme: self.theme.clone(),
@@ -234,32 +230,27 @@ impl SlircApp {
         // Process event and check if nick changed
         if let Some(new_nick) = events::process_single_event(&mut self.state, event) {
             // Update UI nickname field when server confirms nick change
-            self.nickname_input = new_nick;
+            self.connection.nickname = new_nick;
         }
     }
 
     /// Initiate a connection to the server using current UI inputs.
     /// Sets state.server_name and state.our_nick before sending connect action.
     fn do_connect(&mut self) {
-        // Parse server:port from input
-        let parts: Vec<&str> = self.server_input.split(':').collect();
-        let server = parts[0].to_string();
-        let port: u16 = parts
-            .get(1)
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(if self.use_tls { 6697 } else { 6667 });
+        // Parse server:port from connection config
+        let (server, port) = self.connection.parse_server();
 
         // Set state fields for event processing (like Halloy's configured_nick pattern)
-        self.state.server_name = self.server_input.clone();
-        self.state.our_nick = self.nickname_input.clone();
+        self.state.server_name = self.connection.server.clone();
+        self.state.our_nick = self.connection.nickname.clone();
 
         let _ = self.action_tx.send(BackendAction::Connect {
             server,
             port,
-            nickname: self.nickname_input.clone(),
-            username: self.nickname_input.clone(),
-            realname: format!("SLIRC User ({})", self.nickname_input),
-            use_tls: self.use_tls,
+            nickname: self.connection.nickname.clone(),
+            username: self.connection.nickname.clone(),
+            realname: format!("SLIRC User ({})", self.connection.nickname),
+            use_tls: self.connection.use_tls,
             auto_reconnect: true,
             sasl_password: None,
         });
@@ -326,7 +317,7 @@ impl eframe::App for SlircApp {
                     ctx,
                     buffer,
                     &self.state.active_buffer,
-                    &self.nickname_input,
+                    &self.connection.nickname,
                     &mut self.context_menu_visible,
                     &mut self.context_menu_target,
                 );
@@ -491,11 +482,11 @@ impl SlircApp {
                 if let Some(toolbar_action) = ui::toolbar::render_toolbar(
                     ui,
                     ctx,
-                    &mut self.server_input,
-                    &mut self.nickname_input,
+                    &mut self.connection.server,
+                    &mut self.connection.nickname,
                     &mut self.input.channel_input,
                     self.state.is_connected,
-                    &mut self.use_tls,
+                    &mut self.connection.use_tls,
                     &self.action_tx,
                 ) {
                     match toolbar_action {
@@ -503,7 +494,7 @@ impl SlircApp {
                             self.do_connect();
                         }
                         ui::toolbar::ToolbarAction::OpenNickChangeDialog => {
-                            self.dialogs.open_nick_change(&self.nickname_input);
+                            self.dialogs.open_nick_change(&self.connection.nickname);
                         }
                     }
                 }
@@ -653,7 +644,7 @@ impl SlircApp {
                             &self.state.buffers,
                             &self.action_tx,
                             &mut self.state.system_log,
-                            &mut self.nickname_input,
+                            &mut self.connection.nickname,
                         ) {
                             self.input.history.push(self.input.message_input.clone());
                         }
@@ -705,7 +696,7 @@ impl SlircApp {
             .show(ctx, |ui| {
                 // Use state.our_nick if connected, otherwise fall back to UI input
                 let current_nick = if self.state.our_nick.is_empty() {
-                    &self.nickname_input
+                    &self.connection.nickname
                 } else {
                     &self.state.our_nick
                 };
@@ -766,7 +757,7 @@ impl SlircApp {
                                     .get(&self.state.active_buffer)
                                     .map(|b| {
                                         b.users.iter().any(|u| {
-                                            u.nick == self.nickname_input
+                                            u.nick == self.connection.nickname
                                                 && ui::theme::prefix_rank(u.prefix) >= 3
                                         })
                                     })
@@ -917,8 +908,8 @@ impl Drop for SlircApp {
     fn drop(&mut self) {
         // Persist settings on exit
         let settings = Settings {
-            server: self.server_input.clone(),
-            nick: self.nickname_input.clone(),
+            server: self.connection.server.clone(),
+            nick: self.connection.nickname.clone(),
             default_channel: self.input.channel_input.clone(),
             history: self.input.history.clone(),
             theme: self.theme.clone(),

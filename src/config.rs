@@ -40,6 +40,38 @@ impl Default for Network {
     }
 }
 
+/// Connection form inputs (ephemeral UI state for quick connect)
+#[derive(Clone, Debug)]
+pub struct ConnectionConfig {
+    pub server: String,
+    pub nickname: String,
+    pub use_tls: bool,
+}
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self {
+            server: DEFAULT_SERVER.to_string(),
+            nickname: "slirc_user".to_string(),
+            use_tls: false,
+        }
+    }
+}
+
+impl ConnectionConfig {
+    /// Parse server address into (host, port) tuple
+    /// Uses port 6697 for TLS, 6667 for plaintext by default
+    pub fn parse_server(&self) -> (String, u16) {
+        let parts: Vec<&str> = self.server.split(':').collect();
+        let host = parts[0].to_string();
+        let port: u16 = parts
+            .get(1)
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(if self.use_tls { 6697 } else { 6667 });
+        (host, port)
+    }
+}
+
 /// Load a NickServ password from the system keyring (for future NickServ support).
 pub fn load_nickserv_password(network_name: &str) -> Option<String> {
     use keyring::Entry;
