@@ -5,7 +5,7 @@ use eframe::egui::{self, Color32, RichText, Stroke};
 
 use crate::protocol::BackendAction;
 
-/// Render the top toolbar with connection controls and menus.
+/// Render the top toolbar with connection controls.
 pub fn render_toolbar(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -15,11 +15,8 @@ pub fn render_toolbar(
     is_connected: bool,
     use_tls: &mut bool,
     action_tx: &Sender<BackendAction>,
-    network_manager_open: &mut bool,
     nick_change_dialog_open: &mut bool,
     nick_change_input: &mut String,
-    show_channel_list: &mut bool,
-    show_user_list: &mut bool,
 ) {
     let dark_mode = ctx.style().visuals.dark_mode;
     let text_secondary = if dark_mode { 
@@ -31,42 +28,6 @@ pub fn render_toolbar(
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
-
-        // Main menu button
-        ui.menu_button("≡", |ui| {
-            ui.set_min_width(150.0);
-            if ui.button("Network List...").clicked() {
-                *network_manager_open = true;
-                ui.close_menu();
-            }
-            ui.separator();
-            if ui
-                .add_enabled(!is_connected, egui::Button::new("Connect"))
-                .clicked()
-            {
-                *network_manager_open = true;
-                ui.close_menu();
-            }
-            if ui
-                .add_enabled(is_connected, egui::Button::new("Disconnect"))
-                .clicked()
-            {
-                let _ = action_tx.send(BackendAction::Disconnect);
-                ui.close_menu();
-            }
-            ui.separator();
-            if ui.button("Quit").clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-        });
-
-        // View menu
-        ui.menu_button("View", |ui| {
-            ui.checkbox(show_channel_list, "Channel List");
-            ui.checkbox(show_user_list, "User List");
-        });
-
-        ui.separator();
 
         if !is_connected {
             // Server/nick inputs when disconnected

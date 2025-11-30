@@ -562,11 +562,13 @@ impl eframe::App for SlircApp {
                     ui,
                     self.is_connected,
                     &self.active_buffer,
+                    &mut self.show_channel_list,
                     &mut self.show_user_list,
                     &mut self.show_help_dialog,
                     &mut self.network_manager_open,
                     &mut self.show_channel_browser,
                     &mut self.channel_list_loading,
+                    &mut self.quick_switcher,
                     &self.action_tx,
                 );
             });
@@ -593,11 +595,8 @@ impl eframe::App for SlircApp {
                 self.is_connected,
                 &mut self.use_tls,
                 &self.action_tx,
-                &mut self.network_manager_open,
                 &mut self.nick_change_dialog_open,
                 &mut self.nick_change_input,
-                &mut self.show_channel_list,
-                &mut self.show_user_list,
             );
         });
 

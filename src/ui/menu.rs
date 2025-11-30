@@ -10,11 +10,13 @@ pub fn render_menu_bar(
     ui: &mut egui::Ui,
     is_connected: bool,
     active_buffer: &str,
+    show_channel_list: &mut bool,
     show_user_list: &mut bool,
     show_help_dialog: &mut bool,
     network_manager_open: &mut bool,
     show_channel_browser: &mut bool,
     channel_list_loading: &mut bool,
+    quick_switcher: &mut crate::ui::quick_switcher::QuickSwitcher,
     action_tx: &crossbeam_channel::Sender<BackendAction>,
 ) {
     egui::menu::bar(ui, |ui| {
@@ -111,16 +113,21 @@ pub fn render_menu_bar(
 
         // View Menu
         ui.menu_button("View", |ui| {
-            ui.add_enabled_ui(false, |ui| {
-                ui.horizontal(|ui| {
-                    ui.button("Quick Switcher");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("Ctrl+K").weak().small());
-                    });
+            ui.horizontal(|ui| {
+                if ui.button("Quick Switcher").clicked() {
+                    quick_switcher.toggle();
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+K").weak().small());
                 });
             });
 
             ui.separator();
+
+            ui.horizontal(|ui| {
+                ui.checkbox(show_channel_list, "Show Channel List");
+            });
 
             ui.horizontal(|ui| {
                 ui.checkbox(show_user_list, "Show User List");
