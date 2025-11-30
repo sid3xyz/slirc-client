@@ -319,6 +319,28 @@ pub fn process_single_event(
             GuiEvent::ChannelListItem { .. } | GuiEvent::ChannelListEnd => {
                 // No-op: filtered by app.rs process_events
             }
+
+            // Server info from ISUPPORT - log network name
+            GuiEvent::ServerInfo { network, casemapping } => {
+                let ts = Local::now().format("%H:%M:%S").to_string();
+                if let Some(net) = network {
+                    system_log.push(format!("[{}] Network: {}", ts, net));
+                }
+                if let Some(cm) = casemapping {
+                    system_log.push(format!("[{}] Casemapping: {}", ts, cm));
+                }
+            }
+
+            // SASL authentication result
+            GuiEvent::SaslResult { success, message } => {
+                let ts = Local::now().format("%H:%M:%S").to_string();
+                let icon = if success { "✓" } else { "⚠" };
+                system_log.push(format!("[{}] {} SASL: {}", ts, icon, message));
+                status_messages.push((
+                    format!("SASL: {}", message),
+                    std::time::Instant::now(),
+                ));
+            }
         }
 }
 

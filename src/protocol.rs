@@ -10,6 +10,8 @@ pub enum BackendAction {
         realname: String,
         use_tls: bool,
         auto_reconnect: bool,
+        /// Optional SASL password for authentication
+        sasl_password: Option<String>,
     },
     /// Disconnect from the server
     #[allow(dead_code)]
@@ -109,6 +111,13 @@ pub enum GuiEvent {
     },
     /// End of channel list (RPL_LISTEND 323)
     ChannelListEnd,
+    /// Server capabilities negotiated (network name, casemapping, etc.)
+    ServerInfo {
+        network: Option<String>,
+        casemapping: Option<String>,
+    },
+    /// SASL authentication result
+    SaslResult { success: bool, message: String },
 }
 
 /// Represents a nick and any prefix/mode that is associated with it in a

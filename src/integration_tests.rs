@@ -1,14 +1,12 @@
 //! Integration tests for slirc-client
-//! 
+//!
 //! These tests exercise full workflows across multiple modules to ensure
 //! proper integration between backend, events, commands, and UI state.
 
-#[cfg(test)]
-mod integration_tests {
-    use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
-    use crate::protocol::{BackendAction, GuiEvent, UserInfo};
-    use crossbeam_channel::unbounded;
-    use std::collections::HashMap;
+use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
+use crate::protocol::{BackendAction, GuiEvent, UserInfo};
+use crossbeam_channel::unbounded;
+use std::collections::HashMap;
 
     /// Test channel buffer state management with multiple channels
     #[test]
@@ -232,6 +230,7 @@ mod integration_tests {
             realname: "Test User".to_string(),
             use_tls: false,
             auto_reconnect: true,
+            sasl_password: None,
         }).unwrap();
 
         action_tx.send(BackendAction::Join("#test".to_string())).unwrap();
@@ -384,6 +383,7 @@ mod integration_tests {
             realname: "Test User".to_string(),
             use_tls: true,
             auto_reconnect: true,
+            sasl_password: None,
         }).unwrap();
 
         // Verify action was sent correctly
@@ -412,6 +412,7 @@ mod integration_tests {
             realname: "User".to_string(),
             use_tls: true,
             auto_reconnect: true,
+            sasl_password: None,
         }).unwrap();
 
         let action1 = action_rx.try_recv().unwrap();
@@ -428,6 +429,7 @@ mod integration_tests {
             realname: "User".to_string(),
             use_tls: false,
             auto_reconnect: true,
+            sasl_password: None,
         }).unwrap();
 
         let action2 = action_rx.try_recv().unwrap();
@@ -577,7 +579,7 @@ mod integration_tests {
         use crate::ui::theme::mirc_color;
         
         // Test all 16 standard mIRC colors exist and are distinct
-        let colors: Vec<_> = (0..16).map(|i| mirc_color(i)).collect();
+        let colors: Vec<_> = (0..16).map(mirc_color).collect();
         
         // Verify color 0 is white (standard mIRC)
         assert_eq!(colors[0], eframe::egui::Color32::from_rgb(255, 255, 255));
@@ -606,6 +608,3 @@ mod integration_tests {
             assert!(log_dir.to_string_lossy().contains("logs"));
         }
     }
-}
-
-

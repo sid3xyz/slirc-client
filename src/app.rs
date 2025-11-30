@@ -10,7 +10,7 @@ use crate::backend::run_backend;
 use crate::buffer::ChannelBuffer;
 use crate::commands;
 use crate::config::{
-    load_settings, save_settings, Network, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
+    load_nickserv_password, load_settings, save_settings, Network, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
 };
 use crate::events;
 use crate::logging::Logger;
@@ -285,6 +285,7 @@ impl SlircApp {
                             realname: format!("SLIRC User ({})", network.nick),
                             use_tls: network.use_tls,
                             auto_reconnect: network.auto_reconnect,
+                            sasl_password: load_nickserv_password(&network.name),
                         });
 
                         // Auto-join favorite channels
@@ -1149,6 +1150,7 @@ impl SlircApp {
                         realname: format!("SLIRC User ({})", network.nick),
                         use_tls: network.use_tls,
                         auto_reconnect: network.auto_reconnect,
+                        sasl_password: load_nickserv_password(&network.name),
                     });
 
                     // Auto-join favorite channels

@@ -65,6 +65,7 @@ pub fn render_toolbar(
                     realname: format!("SLIRC User ({})", nickname_input),
                     use_tls: *use_tls,
                     auto_reconnect: true, // Enable auto-reconnect for manual connections
+                    sasl_password: None, // No SASL for quick-connect
                 });
             }
         } else {

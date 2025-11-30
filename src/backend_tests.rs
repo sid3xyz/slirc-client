@@ -1,12 +1,9 @@
 //! Comprehensive backend tests for network layer
 
-#[cfg(test)]
-mod backend_tests {
-    use crossbeam_channel::unbounded;
-    use std::time::Duration;
-    
+use crossbeam_channel::unbounded;
+use std::time::Duration;
 
-    use crate::protocol::{BackendAction, GuiEvent};
+use crate::protocol::{BackendAction, GuiEvent};
 
     #[test]
     fn test_backend_thread_creation() {
@@ -302,6 +299,7 @@ mod backend_tests {
             realname: "Test User".to_string(),
             use_tls: false,
             auto_reconnect: true,
+            sasl_password: None,
         };
 
         let cloned = action.clone();
@@ -328,4 +326,3 @@ mod backend_tests {
             Ok(_) => panic!("Should have failed"),
         }
     }
-}
