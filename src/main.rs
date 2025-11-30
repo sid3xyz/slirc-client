@@ -10,6 +10,7 @@ mod backend;
 mod buffer;
 mod commands;
 mod config;
+mod dialog_manager;
 mod events;
 mod fonts;
 mod input_state;
@@ -57,7 +58,7 @@ fn main() -> eframe::Result<()> {
 mod tests {
     use crate::app::SlircApp;
     use crate::buffer::ChannelBuffer;
-    use crate::config::{DEFAULT_CHANNEL, DEFAULT_SERVER};
+    use crate::config::DEFAULT_SERVER;
     use crate::protocol::{BackendAction, GuiEvent, UserInfo};
     use crate::state::ClientState;
     use crossbeam_channel::unbounded;
@@ -91,12 +92,8 @@ mod tests {
             show_channel_list: true,
             show_user_list: true,
             quick_switcher: crate::ui::quick_switcher::QuickSwitcher::default(),
-            // Dialogs using Option pattern
-            help_dialog: crate::ui::dialogs::HelpDialog::new(),
-            nick_change_dialog: None,
-            topic_editor_dialog: None,
-            network_manager_dialog: None,
-            channel_browser_dialog: None,
+            // Dialogs - managed centrally by DialogManager
+            dialogs: crate::dialog_manager::DialogManager::new(),
         };
         (app, event_tx, action_rx)
     }

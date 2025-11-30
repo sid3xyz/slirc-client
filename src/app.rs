@@ -12,14 +12,14 @@ use crate::commands;
 use crate::config::{
     load_nickserv_password, load_settings, save_settings, Settings, DEFAULT_SERVER,
 };
+use crate::dialog_manager::DialogManager;
 use crate::events;
 use crate::input_state::InputState;
 use crate::protocol::{BackendAction, GuiEvent};
 use crate::state::ClientState;
 use crate::ui;
 use crate::ui::dialogs::{
-    ChannelBrowserDialog, ChannelListItem, DialogAction, HelpDialog,
-    NetworkManagerDialog, NickChangeDialog, TopicEditorDialog,
+    ChannelListItem, DialogAction,
 };
 
 pub struct SlircApp {
@@ -53,12 +53,8 @@ pub struct SlircApp {
     // Quick switcher (Ctrl+K)
     pub quick_switcher: ui::quick_switcher::QuickSwitcher,
 
-    // Dialogs - Option<Dialog> pattern: None = closed, Some = open with state
-    pub help_dialog: HelpDialog,
-    pub nick_change_dialog: Option<NickChangeDialog>,
-    pub topic_editor_dialog: Option<TopicEditorDialog>,
-    pub network_manager_dialog: Option<NetworkManagerDialog>,
-    pub channel_browser_dialog: Option<ChannelBrowserDialog>,
+    // Dialogs - managed centrally by DialogManager
+    pub dialogs: DialogManager,
 }
 
 impl SlircApp {
@@ -118,12 +114,8 @@ impl SlircApp {
             show_user_list: true,
             quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
 
-            // Dialogs - Option pattern for open/closed state
-            help_dialog: HelpDialog::new(),
-            nick_change_dialog: None,
-            topic_editor_dialog: None,
-            network_manager_dialog: None,
-            channel_browser_dialog: None,
+            // Dialogs - managed centrally by DialogManager
+            dialogs: DialogManager::new(),
         };
 
         // Restore settings if present
@@ -216,19 +208,15 @@ impl SlircApp {
                     topic,
                 } => {
                     // Add to channel browser dialog if open
-                    if let Some(ref mut dialog) = self.channel_browser_dialog {
-                        dialog.add_channel(ChannelListItem {
-                            channel,
-                            user_count,
-                            topic,
-                        });
-                    }
+                    self.dialogs.add_channel_to_browser(ChannelListItem {
+                        channel,
+                        user_count,
+                        topic,
+                    });
                 }
                 GuiEvent::ChannelListEnd => {
                     // Mark loading complete and show dialog
-                    if let Some(ref mut dialog) = self.channel_browser_dialog {
-                        dialog.set_loading_complete();
-                    }
+                    self.dialogs.channel_browser_complete();
                 }
                 other => {
                     regular_events.push(other);
@@ -299,7 +287,7 @@ impl eframe::App for SlircApp {
             }
             // F1: Toggle help dialog
             if i.key_pressed(egui::Key::F1) {
-                self.help_dialog.toggle();
+                self.dialogs.toggle_help();
             }
         });
 
@@ -331,13 +319,13 @@ impl eframe::App for SlircApp {
                 ) {
                     match menu_action {
                         ui::menu::MenuAction::NetworkManager => {
-                            self.network_manager_dialog = Some(NetworkManagerDialog::new(self.state.networks.clone()));
+                            self.dialogs.open_network_manager(self.state.networks.clone());
                         }
                         ui::menu::MenuAction::Help => {
-                            self.help_dialog.show();
+                            self.dialogs.show_help();
                         }
                         ui::menu::MenuAction::ChannelBrowser => {
-                            self.channel_browser_dialog = Some(ChannelBrowserDialog::new());
+                            self.dialogs.open_channel_browser();
                         }
                     }
                 }
@@ -371,7 +359,7 @@ impl eframe::App for SlircApp {
                             self.do_connect();
                         }
                         ui::toolbar::ToolbarAction::OpenNickChangeDialog => {
-                            self.nick_change_dialog = Some(NickChangeDialog::new(&self.nickname_input));
+                            self.dialogs.open_nick_change(&self.nickname_input);
                         }
                     }
                 }
@@ -610,7 +598,7 @@ impl eframe::App for SlircApp {
                                 .get(&channel)
                                 .map(|b| b.topic.clone())
                                 .unwrap_or_default();
-                            self.topic_editor_dialog = Some(TopicEditorDialog::new(&channel, &current_topic));
+                            self.dialogs.open_topic_editor(&channel, &current_topic);
                         }
                     }
                 }
@@ -814,88 +802,18 @@ impl SlircApp {
         // Floating status toasts (top-right corner)
         ui::dialogs::render_status_toasts(ctx, &self.state.status_messages);
 
-        // Help dialog (F1) - simple toggle, no actions
-        self.help_dialog.render(ctx);
-
-        // Collect actions and state changes first to avoid borrow issues
-        let mut actions: Vec<DialogAction> = Vec::new();
-        let mut close_nick_dialog = false;
-        let mut close_topic_dialog = false;
-        let mut close_network_dialog = false;
-        let mut save_networks = false;
-        let mut networks_to_save: Option<Vec<crate::config::Network>> = None;
-        let mut close_channel_browser = false;
-
-        // Nick change dialog
-        if let Some(ref mut dialog) = self.nick_change_dialog {
-            if let Some(action) = dialog.render(ctx) {
-                actions.push(action);
-            }
-            if !dialog.is_open() {
-                close_nick_dialog = true;
-            }
-        }
-
-        // Topic editor dialog
-        if let Some(ref mut dialog) = self.topic_editor_dialog {
-            let (action, still_open) = dialog.render(ctx);
-            if let Some(action) = action {
-                actions.push(action);
-            }
-            if !still_open {
-                close_topic_dialog = true;
-            }
-        }
-
-        // Network manager dialog
-        if let Some(ref mut dialog) = self.network_manager_dialog {
-            let (action, still_open) = dialog.render(ctx);
-            if let Some(action) = action {
-                actions.push(action);
-            }
-            if !still_open {
-                if dialog.was_modified() {
-                    networks_to_save = Some(dialog.get_networks().to_vec());
-                    save_networks = true;
-                }
-                close_network_dialog = true;
-            }
-        }
-
-        // Channel browser dialog
-        if let Some(ref mut dialog) = self.channel_browser_dialog {
-            let (action, still_open) = dialog.render(ctx);
-            if let Some(action) = action {
-                actions.push(action);
-            }
-            if !still_open {
-                close_channel_browser = true;
-            }
-        }
-
-        // Now process collected actions (no longer borrowing dialog fields)
+        // Delegate to DialogManager for all dialog rendering
+        let (actions, networks_to_save) = self.dialogs.render(ctx);
+        
+        // Process actions
         for action in actions {
             self.handle_dialog_action(action);
         }
-
-        // Close dialogs as needed
-        if close_nick_dialog {
-            self.nick_change_dialog = None;
-        }
-        if close_topic_dialog {
-            self.topic_editor_dialog = None;
-        }
-        if close_network_dialog {
-            if save_networks {
-                if let Some(networks) = networks_to_save {
-                    self.state.networks = networks;
-                    self.save_networks();
-                }
-            }
-            self.network_manager_dialog = None;
-        }
-        if close_channel_browser {
-            self.channel_browser_dialog = None;
+        
+        // Save networks if needed
+        if let Some(networks) = networks_to_save {
+            self.state.networks = networks;
+            self.save_networks();
         }
     }
 
