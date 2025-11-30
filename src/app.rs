@@ -72,6 +72,8 @@ pub struct SlircApp {
     pub status_messages: Vec<(String, std::time::Instant)>,
     // Chat logger
     pub logger: Option<Logger>,
+    // Quick switcher (Ctrl+K)
+    pub quick_switcher: ui::quick_switcher::QuickSwitcher,
 }
 
 impl SlircApp {
@@ -240,6 +242,7 @@ impl SlircApp {
             nick_change_input: String::new(),
             status_messages: Vec::new(),
             logger: Logger::new().ok(), // Initialize logger, silently fail if can't create
+            quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
         };
 
         // Create the System buffer
@@ -463,8 +466,12 @@ impl eframe::App for SlircApp {
                     }
                 }
             }
-            // Ctrl+K: Previous channel (or Ctrl+P for "previous")
-            if i.modifiers.ctrl && (i.key_pressed(egui::Key::K) || i.key_pressed(egui::Key::P)) {
+            // Ctrl+K: Quick switcher (search overlay)
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::K) {
+                self.quick_switcher.toggle();
+            }
+            // Ctrl+P: Previous channel
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::P) {
                 if let Some(current_idx) = self
                     .buffers_order
                     .iter()
@@ -1274,6 +1281,15 @@ impl eframe::App for SlircApp {
                 });
             if !open {
                 self.nick_change_dialog_open = false;
+            }
+        }
+        
+        // Quick switcher overlay (Ctrl+K)
+        if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.buffers) {
+            self.active_buffer = selected_buffer.clone();
+            if let Some(buffer) = self.buffers.get_mut(&selected_buffer) {
+                buffer.clear_unread();
+                buffer.has_highlight = false;
             }
         }
     }

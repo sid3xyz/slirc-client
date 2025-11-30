@@ -7,11 +7,13 @@
 //! - `messages`: Message area rendering
 //! - `dialogs`: Modal dialogs (help, network manager, etc.)
 //! - `theme`: Color schemes and styling utilities
+//! - `quick_switcher`: Quick channel/DM switcher (Ctrl+K)
 
 pub mod dialogs;
 pub mod menu;
 pub mod messages;
 pub mod panels;
+pub mod quick_switcher;
 pub mod theme;
 pub mod toolbar;
 

@@ -111,6 +111,7 @@ mod tests {
             nick_change_input: String::new(),
             status_messages: Vec::new(),
             logger: None, // No logger in tests
+            quick_switcher: crate::ui::quick_switcher::QuickSwitcher::default(),
         };
         (app, event_tx, action_rx)
     }
