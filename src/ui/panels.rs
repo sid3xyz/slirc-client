@@ -7,7 +7,7 @@ use eframe::egui::{self, Color32, Stroke};
 
 use crate::buffer::ChannelBuffer;
 use crate::protocol::UserInfo;
-use crate::ui::theme::{self, dark, light, panel_colors, spacing, text_colors};
+use crate::ui::theme::{self, dark, panel_colors, spacing, text_colors};
 
 /// Render the left channel list panel.
 pub fn render_channel_list(

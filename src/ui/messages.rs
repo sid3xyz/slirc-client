@@ -1,7 +1,7 @@
 //! Modern message rendering for the central chat panel.
 //! Features: message grouping, avatars, hover states, improved typography.
 
-use eframe::egui::{self, Color32, FontFamily, FontId};
+use eframe::egui::{self, Color32};
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 use crate::ui::theme::{self, dark, panel_colors, spacing, text_colors};

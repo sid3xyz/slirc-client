@@ -148,7 +148,7 @@ impl SlircApp {
             ),
             (
                 egui::TextStyle::Body,
-                egui::FontId::new(13.0, egui::FontFamily::Proportional),
+                egui::FontId::new(14.0, egui::FontFamily::Proportional),
             ),
             (
                 egui::TextStyle::Monospace,
@@ -156,18 +156,38 @@ impl SlircApp {
             ),
             (
                 egui::TextStyle::Button,
-                egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                egui::FontId::new(13.0, egui::FontFamily::Proportional),
             ),
             (
                 egui::TextStyle::Heading,
-                egui::FontId::new(15.0, egui::FontFamily::Proportional),
+                egui::FontId::new(16.0, egui::FontFamily::Proportional),
             ),
         ]
         .into();
         // Increase global spacing for breathing room
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        style.spacing.window_margin = egui::Margin::same(10);
-        style.spacing.button_padding = egui::vec2(8.0, 4.0);
+        style.spacing.window_margin = egui::Margin::same(12);
+        style.spacing.button_padding = egui::vec2(10.0, 5.0);
+        
+        // Modern button styling
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(55, 60, 70);
+        style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(55, 60, 70);
+        style.visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+        style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
+        
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(70, 76, 88);
+        style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(70, 76, 88);
+        style.visuals.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+        style.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
+        
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(88, 101, 242);
+        style.visuals.widgets.active.weak_bg_fill = egui::Color32::from_rgb(88, 101, 242);
+        style.visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
+        
+        // Text input styling
+        style.visuals.extreme_bg_color = egui::Color32::from_rgb(30, 32, 38);
+        style.visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(88, 101, 242, 100);
+        
         cc.egui_ctx.set_style(style);
 
         let mut app = Self {
@@ -468,8 +488,25 @@ impl eframe::App for SlircApp {
         self.status_messages
             .retain(|(_, t)| t.elapsed() < std::time::Duration::from_secs(4));
 
+        let dark_mode = ctx.style().visuals.dark_mode;
+        let toolbar_bg = if dark_mode {
+            egui::Color32::from_rgb(32, 34, 40)
+        } else {
+            egui::Color32::from_rgb(245, 246, 250)
+        };
+
         // Single compact toolbar (HexChat style - no separate menu bar)
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+        egui::TopBottomPanel::top("toolbar")
+            .frame(
+                egui::Frame::new()
+                    .fill(toolbar_bg)
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        ui::theme::panel_colors::separator(dark_mode),
+                    )),
+            )
+            .show(ctx, |ui| {
             ui::toolbar::render_toolbar(
                 ui,
                 ctx,

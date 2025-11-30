@@ -1,7 +1,7 @@
 //! Top toolbar rendering with connection controls.
 
 use crossbeam_channel::Sender;
-use eframe::egui;
+use eframe::egui::{self, Color32, RichText, Stroke};
 
 use crate::protocol::BackendAction;
 
@@ -21,9 +21,16 @@ pub fn render_toolbar(
     show_channel_list: &mut bool,
     show_user_list: &mut bool,
 ) {
+    let dark_mode = ctx.style().visuals.dark_mode;
+    let text_secondary = if dark_mode { 
+        Color32::from_rgb(148, 155, 164) 
+    } else { 
+        Color32::from_rgb(99, 100, 102) 
+    };
+    
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
+        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
 
         // Main menu button
         ui.menu_button("≡", |ui| {
@@ -123,13 +130,22 @@ pub fn render_toolbar(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if is_connected {
                 ui.label(
-                    egui::RichText::new(server_input.as_str())
-                        .color(egui::Color32::DARK_GRAY)
+                    RichText::new(server_input.as_str())
+                        .color(text_secondary)
                         .small(),
                 );
-                ui.label(egui::RichText::new("●").color(egui::Color32::from_rgb(0, 200, 0)));
+                ui.add_space(4.0);
+                // Green glowing dot for connected
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                let center = rect.center();
+                // Glow effect
+                ui.painter().circle_filled(center, 6.0, Color32::from_rgba_unmultiplied(34, 197, 94, 40));
+                ui.painter().circle_filled(center, 4.0, Color32::from_rgb(34, 197, 94));
             } else {
-                ui.label(egui::RichText::new("○").color(egui::Color32::from_rgb(150, 150, 150)));
+                // Gray hollow circle for disconnected
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                let center = rect.center();
+                ui.painter().circle_stroke(center, 4.0, Stroke::new(1.5, Color32::from_rgb(100, 100, 100)));
             }
         });
     });
