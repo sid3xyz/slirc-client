@@ -10,6 +10,8 @@ use crate::logging::Logger;
 use crate::protocol::{GuiEvent, UserInfo};
 
 /// Process all pending events from the backend.
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 pub fn process_events(
     event_rx: &Receiver<GuiEvent>,
     is_connected: &mut bool,
@@ -44,6 +46,7 @@ pub fn process_events(
 }
 
 /// Process a single event from the backend.
+#[allow(clippy::too_many_arguments)]
 pub fn process_single_event(
     event: GuiEvent,
     is_connected: &mut bool,

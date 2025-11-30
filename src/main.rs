@@ -98,24 +98,19 @@ mod tests {
             last_input_text: String::new(),
             theme: String::from("dark"),
             font_fallback: None,
-            topic_editor_open: None,
             networks: Vec::new(),
-            network_manager_open: false,
-            editing_network: None,
-            network_form: crate::ui::dialogs::NetworkForm::default(),
             show_channel_list: true,
             show_user_list: true,
             expanded_networks: HashSet::new(),
-            show_help_dialog: false,
-            nick_change_dialog_open: false,
-            nick_change_input: String::new(),
             status_messages: Vec::new(),
             logger: None, // No logger in tests
             quick_switcher: crate::ui::quick_switcher::QuickSwitcher::default(),
-            show_channel_browser: false,
-            channel_list: Vec::new(),
-            channel_list_filter: String::new(),
-            channel_list_loading: false,
+            // Dialogs using Option pattern
+            help_dialog: crate::ui::dialogs::HelpDialog::new(),
+            nick_change_dialog: None,
+            topic_editor_dialog: None,
+            network_manager_dialog: None,
+            channel_browser_dialog: None,
         };
         (app, event_tx, action_rx)
     }

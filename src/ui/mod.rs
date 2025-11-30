@@ -5,7 +5,7 @@
 //! - `toolbar`: Top toolbar with connection controls
 //! - `panels`: Side panels (channel list, user list)
 //! - `messages`: Message area rendering
-//! - `dialogs`: Modal dialogs (help, network manager, etc.)
+//! - `dialogs`: Modal dialogs (help, network manager, etc.) - self-contained components
 //! - `theme`: Color schemes and styling utilities
 //! - `quick_switcher`: Quick channel/DM switcher (Ctrl+K)
 

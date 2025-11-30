@@ -12,6 +12,7 @@ pub enum BackendAction {
         auto_reconnect: bool,
     },
     /// Disconnect from the server
+    #[allow(dead_code)]
     Disconnect,
     /// Join a channel
     Join(String),

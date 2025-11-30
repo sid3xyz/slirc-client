@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 /// Modern theme with semantic color system (7-level surface hierarchy)
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct SlircTheme {
     pub name: String,
     pub surface: [Color32; 7],
@@ -88,6 +89,7 @@ impl SlircTheme {
     }
 
     /// Apply theme to egui Style
+    #[allow(dead_code)]
     pub fn apply_to_style(&self, style: &mut Style) {
         let dark_mode = self.name == "Dark";
         style.visuals.dark_mode = dark_mode;
@@ -271,6 +273,7 @@ pub fn render_avatar(ui: &mut eframe::egui::Ui, nick: &str, size: f32) -> eframe
 }
 
 /// Render a small status dot for user list
+#[allow(dead_code)]
 pub fn render_status_dot(
     ui: &mut eframe::egui::Ui,
     theme: &SlircTheme,
@@ -289,6 +292,7 @@ pub fn render_status_dot(
 }
 
 /// Render unread badge
+#[allow(dead_code)]
 pub fn render_unread_badge(ui: &mut eframe::egui::Ui, theme: &SlircTheme, count: usize, has_mention: bool) {
     if count == 0 {
         return;

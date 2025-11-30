@@ -186,25 +186,19 @@ fn render_channel_item(
     // Channel name
     let text_color = if has_highlight {
         theme.error
-    } else if selected {
-        theme.text_primary
-    } else if unread > 0 {
+    } else if selected || unread > 0 {
         theme.text_primary
     } else {
         theme.text_secondary
     };
 
-    let display_name = if name.starts_with('#') {
-        &name[1..]
+    let display_name = if let Some(stripped) = name.strip_prefix('#') {
+        stripped
     } else {
         name
     };
 
-    let font = if selected || unread > 0 {
-        egui::FontId::new(13.0, egui::FontFamily::Proportional)
-    } else {
-        egui::FontId::new(13.0, egui::FontFamily::Proportional)
-    };
+    let font = egui::FontId::new(13.0, egui::FontFamily::Proportional);
 
     ui.painter().text(
         egui::pos2(rect.min.x + 44.0, rect.center().y),

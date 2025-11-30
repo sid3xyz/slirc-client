@@ -5,7 +5,15 @@ use eframe::egui::{self, Color32, RichText, Stroke};
 
 use crate::protocol::BackendAction;
 
+/// Actions that the toolbar can request
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolbarAction {
+    OpenNickChangeDialog,
+}
+
 /// Render the top toolbar with connection controls.
+/// Returns Some(ToolbarAction) if an action was requested.
+#[allow(clippy::too_many_arguments)]
 pub fn render_toolbar(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -15,9 +23,8 @@ pub fn render_toolbar(
     is_connected: bool,
     use_tls: &mut bool,
     action_tx: &Sender<BackendAction>,
-    nick_change_dialog_open: &mut bool,
-    nick_change_input: &mut String,
-) {
+) -> Option<ToolbarAction> {
+    let mut toolbar_action: Option<ToolbarAction> = None;
     let dark_mode = ctx.style().visuals.dark_mode;
     let text_secondary = if dark_mode { 
         Color32::from_rgb(148, 155, 164) 
@@ -63,8 +70,7 @@ pub fn render_toolbar(
         } else {
             // Nick button and channel join when connected
             if ui.button(nickname_input.as_str()).clicked() {
-                *nick_change_input = nickname_input.clone();
-                *nick_change_dialog_open = true;
+                toolbar_action = Some(ToolbarAction::OpenNickChangeDialog);
             }
 
             ui.separator();
@@ -110,4 +116,6 @@ pub fn render_toolbar(
             }
         });
     });
+    
+    toolbar_action
 }

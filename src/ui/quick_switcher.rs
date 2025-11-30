@@ -26,6 +26,7 @@ impl QuickSwitcher {
     }
 
     /// Show the quick switcher
+    #[allow(dead_code)]
     pub fn show(&mut self) {
         self.visible = true;
         self.query.clear();
@@ -95,7 +96,7 @@ impl QuickSwitcher {
                 egui::Frame::window(&ctx.style())
                     .fill(theme.surface[6])
                     .stroke(egui::Stroke::new(1.0, theme.border_strong))
-                    .rounding(8.0),
+                    .corner_radius(8.0),
             )
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
@@ -118,11 +119,7 @@ impl QuickSwitcher {
                         );
                         
                         // Auto-focus on first frame
-                        if ui.memory(|m| m.has_focus(search_response.id)) {
-                            search_response.request_focus();
-                        } else {
-                            search_response.request_focus();
-                        }
+                        search_response.request_focus();
                     });
                     ui.add_space(12.0);
 
@@ -248,8 +245,8 @@ impl QuickSwitcher {
         );
 
         // Buffer name
-        let display_name = if buffer_name.starts_with('#') {
-            &buffer_name[1..]
+        let display_name = if let Some(stripped) = buffer_name.strip_prefix('#') {
+            stripped
         } else {
             buffer_name
         };

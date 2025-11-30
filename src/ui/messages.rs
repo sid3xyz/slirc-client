@@ -7,7 +7,14 @@ use slirc_proto::ctcp::Ctcp;
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 use crate::ui::theme::{self, SlircTheme};
 
+/// Actions that the message panel can request
+#[derive(Debug, Clone, PartialEq)]
+pub enum MessagePanelAction {
+    OpenTopicEditor(String), // channel name
+}
+
 /// Render the central message panel with topic bar and message list.
+/// Returns Some(MessagePanelAction) if an action was requested.
 pub fn render_messages(
     _ctx: &egui::Context,
     ui: &mut egui::Ui,
@@ -15,14 +22,17 @@ pub fn render_messages(
     buffers: &std::collections::HashMap<String, ChannelBuffer>,
     system_log: &[String],
     nickname: &str,
-    topic_editor_open: &mut Option<String>,
-) {
+) -> Option<MessagePanelAction> {
     let dark_mode = ui.style().visuals.dark_mode;
     let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
+    
+    let mut action: Option<MessagePanelAction> = None;
 
     // Topic bar - modern style with subtle background
     if active_buffer != "System" {
-        render_topic_bar(ui, active_buffer, buffers, nickname, topic_editor_open, &theme);
+        if let Some(topic_action) = render_topic_bar(ui, active_buffer, buffers, nickname, &theme) {
+            action = Some(topic_action);
+        }
     }
 
     // Messages area with improved styling
@@ -40,18 +50,21 @@ pub fn render_messages(
 
             ui.add_space(8.0);
         });
+    
+    action
 }
 
 /// Render topic bar with modern styling
+/// Returns Some(MessagePanelAction::OpenTopicEditor) if user double-clicked to edit topic
 fn render_topic_bar(
     ui: &mut egui::Ui,
     active_buffer: &str,
     buffers: &std::collections::HashMap<String, ChannelBuffer>,
     nickname: &str,
-    topic_editor_open: &mut Option<String>,
     theme: &SlircTheme,
-) {
+) -> Option<MessagePanelAction> {
     let bg_color = theme.surface[2];
+    let mut action: Option<MessagePanelAction> = None;
 
     egui::TopBottomPanel::top("topic_bar")
         .frame(
@@ -59,7 +72,7 @@ fn render_topic_bar(
                 .fill(bg_color)
                 .inner_margin(egui::Margin::symmetric(20, 14))
                 .stroke(egui::Stroke::new(1.0, theme.border_medium))
-                .rounding(egui::Rounding::ZERO),
+                .corner_radius(egui::CornerRadius::ZERO),
         )
         .show_inside(ui, |ui| {
             if let Some(buffer) = buffers.get(active_buffer) {
@@ -87,7 +100,7 @@ fn render_topic_bar(
                 );
 
                 if is_op && topic_response.double_clicked() {
-                    *topic_editor_open = Some(active_buffer.to_string());
+                    action = Some(MessagePanelAction::OpenTopicEditor(active_buffer.to_string()));
                 }
                 if is_op {
                     topic_response.on_hover_text("Double-click to edit topic");
@@ -102,6 +115,8 @@ fn render_topic_bar(
             );
             ui.painter().rect_filled(separator_rect, 0.0, theme.surface[3]);
         });
+    
+    action
 }
 
 /// Render system log with modern styling

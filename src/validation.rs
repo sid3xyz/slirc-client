@@ -57,6 +57,7 @@ pub fn validate_nickname(nick: &str) -> Result<(), String> {
 }
 
 /// Validates a server address (host:port format)
+#[allow(dead_code)]
 pub fn validate_server_address(addr: &str) -> Result<(String, u16), String> {
     if addr.is_empty() {
         return Err("Server address cannot be empty".to_string());
@@ -91,6 +92,7 @@ pub fn validate_server_address(addr: &str) -> Result<(String, u16), String> {
 }
 
 /// Validates an IRC message (PRIVMSG/NOTICE text)
+#[allow(dead_code)]
 pub fn validate_message(msg: &str) -> Result<(), String> {
     if msg.is_empty() {
         return Err("Message cannot be empty".to_string());
@@ -111,6 +113,7 @@ pub fn validate_message(msg: &str) -> Result<(), String> {
 }
 
 /// Sanitizes a message by removing or replacing invalid characters
+#[allow(dead_code)]
 pub fn sanitize_message(msg: &str) -> String {
     msg.chars()
         .filter(|&c| c != '\r' && c != '\n' && c != '\0')

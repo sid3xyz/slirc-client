@@ -16,7 +16,10 @@ use crate::events;
 use crate::logging::Logger;
 use crate::protocol::{BackendAction, GuiEvent};
 use crate::ui;
-use crate::ui::dialogs::NetworkForm;
+use crate::ui::dialogs::{
+    ChannelBrowserDialog, ChannelListItem, DialogAction, HelpDialog,
+    NetworkManagerDialog, NickChangeDialog, TopicEditorDialog,
+};
 
 pub struct SlircApp {
     // Connection settings
@@ -46,8 +49,6 @@ pub struct SlircApp {
     pub context_menu_visible: bool,
     pub context_menu_target: Option<String>,
     pub open_windows: HashSet<String>,
-    // topic editor dialog state: which channel (if any) we're currently editing
-    pub topic_editor_open: Option<String>,
     // Tab completion state
     pub completions: Vec<String>,
     pub completion_index: Option<usize>,
@@ -59,27 +60,23 @@ pub struct SlircApp {
     pub font_fallback: Option<String>,
     // Network management
     pub networks: Vec<Network>,
-    pub network_manager_open: bool,
-    pub editing_network: Option<usize>, // Index of network being edited, None = new
-    pub network_form: NetworkForm,
     // UI visibility toggles
     pub show_channel_list: bool,
     pub show_user_list: bool,
     pub expanded_networks: HashSet<String>,
-    pub show_help_dialog: bool,
-    pub nick_change_dialog_open: bool,
-    pub nick_change_input: String,
     // Status messages (toasts)
     pub status_messages: Vec<(String, std::time::Instant)>,
     // Chat logger
     pub logger: Option<Logger>,
     // Quick switcher (Ctrl+K)
     pub quick_switcher: ui::quick_switcher::QuickSwitcher,
-    // Channel browser
-    pub show_channel_browser: bool,
-    pub channel_list: Vec<ui::dialogs::ChannelListItem>,
-    pub channel_list_filter: String,
-    pub channel_list_loading: bool,
+    
+    // Dialogs - Option<Dialog> pattern: None = closed, Some = open with state
+    pub help_dialog: HelpDialog,
+    pub nick_change_dialog: Option<NickChangeDialog>,
+    pub topic_editor_dialog: Option<TopicEditorDialog>,
+    pub network_manager_dialog: Option<NetworkManagerDialog>,
+    pub channel_browser_dialog: Option<ChannelBrowserDialog>,
 }
 
 impl SlircApp {
@@ -235,24 +232,20 @@ impl SlircApp {
             open_windows: HashSet::new(),
             buffers_order: vec!["System".into()],
             font_fallback: chosen_font,
-            topic_editor_open: None,
             networks: Vec::new(),
-            network_manager_open: false,
-            editing_network: None,
-            network_form: NetworkForm::default(),
             show_channel_list: true,
             show_user_list: true,
             expanded_networks: HashSet::new(),
-            show_help_dialog: false,
-            nick_change_dialog_open: false,
-            nick_change_input: String::new(),
             status_messages: Vec::new(),
             logger: Logger::new().ok(), // Initialize logger, silently fail if can't create
             quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
-            show_channel_browser: false,
-            channel_list: Vec::new(),
-            channel_list_filter: String::new(),
-            channel_list_loading: false,
+            
+            // Dialogs - Option pattern for open/closed state
+            help_dialog: HelpDialog::new(),
+            nick_change_dialog: None,
+            topic_editor_dialog: None,
+            network_manager_dialog: None,
+            channel_browser_dialog: None,
         };
 
         // Create the System buffer
@@ -445,15 +438,20 @@ impl SlircApp {
                     user_count,
                     topic,
                 } => {
-                    self.channel_list.push(ui::dialogs::ChannelListItem {
-                        channel,
-                        user_count,
-                        topic,
-                    });
+                    // Add to channel browser dialog if open
+                    if let Some(ref mut dialog) = self.channel_browser_dialog {
+                        dialog.add_channel(ChannelListItem {
+                            channel,
+                            user_count,
+                            topic,
+                        });
+                    }
                 }
                 GuiEvent::ChannelListEnd => {
-                    self.channel_list_loading = false;
-                    self.show_channel_browser = true; // Auto-show when ready
+                    // Mark loading complete and show dialog
+                    if let Some(ref mut dialog) = self.channel_browser_dialog {
+                        dialog.set_loading_complete();
+                    }
                 }
                 other => {
                     regular_events.push(other);
@@ -536,7 +534,7 @@ impl eframe::App for SlircApp {
             }
             // F1: Toggle help dialog
             if i.key_pressed(egui::Key::F1) {
-                self.show_help_dialog = !self.show_help_dialog;
+                self.help_dialog.toggle();
             }
         });
 
@@ -557,20 +555,28 @@ impl eframe::App for SlircApp {
                     .stroke(egui::Stroke::new(1.0, theme.border_medium)),
             )
             .show(ctx, |ui| {
-                ui::menu::render_menu_bar(
+                if let Some(menu_action) = ui::menu::render_menu_bar(
                     ctx,
                     ui,
                     self.is_connected,
                     &self.active_buffer,
                     &mut self.show_channel_list,
                     &mut self.show_user_list,
-                    &mut self.show_help_dialog,
-                    &mut self.network_manager_open,
-                    &mut self.show_channel_browser,
-                    &mut self.channel_list_loading,
                     &mut self.quick_switcher,
                     &self.action_tx,
-                );
+                ) {
+                    match menu_action {
+                        ui::menu::MenuAction::NetworkManager => {
+                            self.network_manager_dialog = Some(NetworkManagerDialog::new(self.networks.clone()));
+                        }
+                        ui::menu::MenuAction::Help => {
+                            self.help_dialog.show();
+                        }
+                        ui::menu::MenuAction::ChannelBrowser => {
+                            self.channel_browser_dialog = Some(ChannelBrowserDialog::new());
+                        }
+                    }
+                }
             });
 
         // Compact toolbar below menu bar (for quick actions)
@@ -586,19 +592,23 @@ impl eframe::App for SlircApp {
                     )),
             )
             .show(ctx, |ui| {
-            ui::toolbar::render_toolbar(
-                ui,
-                ctx,
-                &mut self.server_input,
-                &mut self.nickname_input,
-                &mut self.channel_input,
-                self.is_connected,
-                &mut self.use_tls,
-                &self.action_tx,
-                &mut self.nick_change_dialog_open,
-                &mut self.nick_change_input,
-            );
-        });
+                if let Some(toolbar_action) = ui::toolbar::render_toolbar(
+                    ui,
+                    ctx,
+                    &mut self.server_input,
+                    &mut self.nickname_input,
+                    &mut self.channel_input,
+                    self.is_connected,
+                    &mut self.use_tls,
+                    &self.action_tx,
+                ) {
+                    match toolbar_action {
+                        ui::toolbar::ToolbarAction::OpenNickChangeDialog => {
+                            self.nick_change_dialog = Some(NickChangeDialog::new(&self.nickname_input));
+                        }
+                    }
+                }
+            });
 
         // Left panel: Buffer list (vertical tabs similar to HexChat)
         if self.show_channel_list {
@@ -808,16 +818,25 @@ impl eframe::App for SlircApp {
                     .inner_margin(12.0),
             )
             .show(ctx, |ui| {
-            ui::messages::render_messages(
-                ctx,
-                ui,
-                &self.active_buffer,
-                &self.buffers,
-                &self.system_log,
-                &self.nickname_input,
-                &mut self.topic_editor_open,
-            );
-        });
+                if let Some(msg_action) = ui::messages::render_messages(
+                    ctx,
+                    ui,
+                    &self.active_buffer,
+                    &self.buffers,
+                    &self.system_log,
+                    &self.nickname_input,
+                ) {
+                    match msg_action {
+                        ui::messages::MessagePanelAction::OpenTopicEditor(channel) => {
+                            let current_topic = self.buffers
+                                .get(&channel)
+                                .map(|b| b.topic.clone())
+                                .unwrap_or_default();
+                            self.topic_editor_dialog = Some(TopicEditorDialog::new(&channel, &current_topic));
+                        }
+                    }
+                }
+            });
 
         // Context menu popup (as a floating window)
         if self.context_menu_visible {
@@ -995,291 +1014,9 @@ impl eframe::App for SlircApp {
                 self.open_windows.remove(&open_name);
             }
         }
-        // Topic editor window (if open)
-        if let Some(channel) = self.topic_editor_open.clone() {
-            let mut open = true;
-            // Clone the topic string for editing to avoid borrowing self while rendering UI
-            let initial_topic = self
-                .buffers
-                .get(&channel)
-                .map(|b| b.topic.clone())
-                .unwrap_or_default();
-            let mut new_topic = initial_topic.clone();
-            egui::Window::new(format!("Edit Topic: {}", channel))
-                .open(&mut open)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    ui.label("Edit the channel topic:");
-                    let _response =
-                        ui.add(egui::TextEdit::multiline(&mut new_topic).desired_rows(3));
-                    ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
-                            if !new_topic.is_empty() {
-                                let _ = self.action_tx.send(BackendAction::SetTopic {
-                                    channel: channel.clone(),
-                                    topic: new_topic.clone(),
-                                });
-                            }
-                            self.topic_editor_open = None;
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.topic_editor_open = None;
-                        }
-                    });
-                });
-            if !open {
-                self.topic_editor_open = None;
-            }
-        }
 
-        // Network Manager window
-        if self.network_manager_open {
-            let mut open = true;
-            egui::Window::new("Network Manager")
-                .open(&mut open)
-                .resizable(true)
-                .default_width(500.0)
-                .show(ctx, |ui| {
-                    ui.heading("Saved Networks");
-                    ui.separator();
-
-                    // List of networks
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            let mut to_delete: Option<usize> = None;
-                            for (idx, network) in self.networks.iter().enumerate() {
-                                let expanded = self.expanded_networks.contains(&network.name);
-                                ui.horizontal(|ui| {
-                                    if ui.small_button(if expanded { "▾" } else { "▸" }).clicked()
-                                    {
-                                        if expanded {
-                                            self.expanded_networks.remove(&network.name);
-                                        } else {
-                                            self.expanded_networks.insert(network.name.clone());
-                                        }
-                                    }
-                                    let label = if network.auto_connect {
-                                        format!("✓ {}", network.name)
-                                    } else {
-                                        network.name.clone()
-                                    };
-                                    ui.label(egui::RichText::new(label).strong());
-                                    ui.label(format!("({})", network.servers.join(", ")));
-
-                                    if ui.button("Edit").clicked() {
-                                        self.editing_network = Some(idx);
-                                        let net = &self.networks[idx];
-                                        self.network_form = NetworkForm {
-                                            name: net.name.clone(),
-                                            servers: net.servers.join(", "),
-                                            nick: net.nick.clone(),
-                                            auto_connect: net.auto_connect,
-                                            favorite_channels: net.favorite_channels.join(", "),
-                                            nickserv_password: net
-                                                .nickserv_password
-                                                .clone()
-                                                .unwrap_or_default(),
-                                            use_tls: net.use_tls,
-                                        };
-                                    }
-
-                                    if ui.button("Connect").clicked() {
-                                        if let Some(server_addr) = network.servers.first() {
-                                            let parts: Vec<&str> = server_addr.split(':').collect();
-                                            let server = parts[0].to_string();
-                                            let port: u16 = parts
-                                                .get(1)
-                                                .and_then(|p| p.parse().ok())
-                                                .unwrap_or(6667);
-
-                                            let _ = self.action_tx.send(BackendAction::Connect {
-                                                server,
-                                                port,
-                                                nickname: network.nick.clone(),
-                                                username: network.nick.clone(),
-                                                realname: format!("SLIRC User ({})", network.nick),
-                                                use_tls: network.use_tls,
-                                                auto_reconnect: network.auto_reconnect,
-                                            });
-
-                                            // Auto-join favorite channels after a brief delay
-                                            // (We should track connection state better, but this is a start)
-                                            for channel in &network.favorite_channels {
-                                                let _ = self
-                                                    .action_tx
-                                                    .send(BackendAction::Join(channel.clone()));
-                                            }
-
-                                            self.network_manager_open = false;
-                                        }
-                                    }
-
-                                    if ui.button("Delete").clicked() {
-                                        to_delete = Some(idx);
-                                    }
-                                });
-                                // Show details if expanded
-                                if expanded {
-                                    ui.add_space(6.0);
-                                    ui.label(format!("Nick: {}", network.nick));
-                                    ui.label(format!(
-                                        "Favorites: {}",
-                                        network.favorite_channels.join(", ")
-                                    ));
-                                    ui.separator();
-                                }
-                            }
-
-                            if let Some(idx) = to_delete {
-                                self.networks.remove(idx);
-                                self.save_networks();
-                            }
-                        });
-
-                    ui.separator();
-
-                    // Add/Edit network form
-                    if self.editing_network.is_some()
-                        || ui.button("Add Network").clicked() && self.editing_network.is_none()
-                    {
-                        if self.editing_network.is_none() {
-                            // Start adding a new network
-                            self.network_form = NetworkForm::default();
-                        }
-
-                        ui.heading(if self.editing_network.is_some() {
-                            "Edit Network"
-                        } else {
-                            "New Network"
-                        });
-                        ui.separator();
-
-                        ui.horizontal(|ui| {
-                            ui.label("Name:");
-                            ui.text_edit_singleline(&mut self.network_form.name);
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.label("Servers:");
-                            ui.text_edit_singleline(&mut self.network_form.servers);
-                        });
-                        ui.label(
-                            "(Comma-separated, e.g., irc.libera.chat:6667, irc.libera.chat:6697)",
-                        );
-
-                        ui.horizontal(|ui| {
-                            ui.label("Nickname:");
-                            ui.text_edit_singleline(&mut self.network_form.nick);
-                        });
-
-                        ui.checkbox(
-                            &mut self.network_form.auto_connect,
-                            "Auto-connect on startup",
-                        );
-
-                        ui.horizontal(|ui| {
-                            ui.label("Favorite Channels:");
-                            ui.text_edit_singleline(&mut self.network_form.favorite_channels);
-                        });
-                        ui.label("(Comma-separated, e.g., #channel1, #channel2)");
-
-                        ui.horizontal(|ui| {
-                            ui.label("NickServ Password:");
-                            ui.add(
-                                egui::TextEdit::singleline(
-                                    &mut self.network_form.nickserv_password,
-                                )
-                                .password(true),
-                            );
-                        });
-                        ui.label("(Optional, stored in plain text - use with caution!)");
-
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            if ui.button("Save").clicked() {
-                                let servers: Vec<String> = self
-                                    .network_form
-                                    .servers
-                                    .split(',')
-                                    .map(|s| s.trim().to_string())
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
-
-                                let favorite_channels: Vec<String> = self
-                                    .network_form
-                                    .favorite_channels
-                                    .split(',')
-                                    .map(|s| s.trim().to_string())
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
-
-                                let network = Network {
-                                    name: self.network_form.name.clone(),
-                                    servers,
-                                    nick: self.network_form.nick.clone(),
-                                    auto_connect: self.network_form.auto_connect,
-                                    favorite_channels,
-                                    nickserv_password: if self
-                                        .network_form
-                                        .nickserv_password
-                                        .is_empty()
-                                    {
-                                        None
-                                    } else {
-                                        Some(self.network_form.nickserv_password.clone())
-                                    },
-                                    use_tls: self.network_form.use_tls,
-                                    auto_reconnect: true, // Enable auto-reconnect by default
-                                };
-
-                                if let Some(idx) = self.editing_network {
-                                    self.networks[idx] = network;
-                                } else {
-                                    self.networks.push(network);
-                                }
-
-                                self.save_networks();
-                                self.editing_network = None;
-                                self.network_form = NetworkForm::default();
-                            }
-
-                            if ui.button("Cancel").clicked() {
-                                self.editing_network = None;
-                                self.network_form = NetworkForm::default();
-                            }
-                        });
-                    }
-                });
-
-            if !open {
-                self.network_manager_open = false;
-                self.editing_network = None;
-            }
-        }
-
-        // Floating status toasts (top-right corner)
-        ui::dialogs::render_status_toasts(ctx, &self.status_messages);
-
-        // Help dialog (F1)
-        ui::dialogs::render_help_dialog(ctx, &mut self.show_help_dialog);
-
-        // Nick change dialog
-        ui::dialogs::render_nick_change_dialog(
-            ctx,
-            &mut self.nick_change_dialog_open,
-            &mut self.nick_change_input,
-            &self.nickname_input,
-            &self.action_tx,
-        );
-
-        // Topic editor dialog
-        ui::dialogs::render_topic_editor(
-            ctx,
-            &mut self.topic_editor_open,
-            &self.buffers,
-            &self.action_tx,
-        );
+        // Render dialogs using the new self-contained dialog pattern
+        self.render_dialogs(ctx);
         
         // Quick switcher overlay (Ctrl+K)
         if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.buffers) {
@@ -1289,17 +1026,145 @@ impl eframe::App for SlircApp {
                 buffer.has_highlight = false;
             }
         }
+    }
+}
+
+impl SlircApp {
+    /// Render all dialogs and handle their actions
+    fn render_dialogs(&mut self, ctx: &egui::Context) {
+        // Floating status toasts (top-right corner)
+        ui::dialogs::render_status_toasts(ctx, &self.status_messages);
+        
+        // Help dialog (F1) - simple toggle, no actions
+        self.help_dialog.render(ctx);
+        
+        // Collect actions and state changes first to avoid borrow issues
+        let mut actions: Vec<DialogAction> = Vec::new();
+        let mut close_nick_dialog = false;
+        let mut close_topic_dialog = false;
+        let mut close_network_dialog = false;
+        let mut save_networks = false;
+        let mut networks_to_save: Option<Vec<crate::config::Network>> = None;
+        let mut close_channel_browser = false;
+        
+        // Nick change dialog
+        if let Some(ref mut dialog) = self.nick_change_dialog {
+            if let Some(action) = dialog.render(ctx) {
+                actions.push(action);
+            }
+            if !dialog.is_open() {
+                close_nick_dialog = true;
+            }
+        }
+        
+        // Topic editor dialog
+        if let Some(ref mut dialog) = self.topic_editor_dialog {
+            let (action, still_open) = dialog.render(ctx);
+            if let Some(action) = action {
+                actions.push(action);
+            }
+            if !still_open {
+                close_topic_dialog = true;
+            }
+        }
+        
+        // Network manager dialog
+        if let Some(ref mut dialog) = self.network_manager_dialog {
+            let (action, still_open) = dialog.render(ctx);
+            if let Some(action) = action {
+                actions.push(action);
+            }
+            if !still_open {
+                if dialog.was_modified() {
+                    networks_to_save = Some(dialog.get_networks().to_vec());
+                    save_networks = true;
+                }
+                close_network_dialog = true;
+            }
+        }
         
         // Channel browser dialog
-        if let Some(channel) = ui::dialogs::render_channel_browser(
-            ctx,
-            &mut self.show_channel_browser,
-            &self.channel_list,
-            &mut self.channel_list_filter,
-            self.channel_list_loading,
-        ) {
-            // User wants to join this channel
-            let _ = self.action_tx.send(BackendAction::Join(channel));
+        if let Some(ref mut dialog) = self.channel_browser_dialog {
+            let (action, still_open) = dialog.render(ctx);
+            if let Some(action) = action {
+                actions.push(action);
+            }
+            if !still_open {
+                close_channel_browser = true;
+            }
+        }
+        
+        // Now process collected actions (no longer borrowing dialog fields)
+        for action in actions {
+            self.handle_dialog_action(action);
+        }
+        
+        // Close dialogs as needed
+        if close_nick_dialog {
+            self.nick_change_dialog = None;
+        }
+        if close_topic_dialog {
+            self.topic_editor_dialog = None;
+        }
+        if close_network_dialog {
+            if save_networks {
+                if let Some(networks) = networks_to_save {
+                    self.networks = networks;
+                    self.save_networks();
+                }
+            }
+            self.network_manager_dialog = None;
+        }
+        if close_channel_browser {
+            self.channel_browser_dialog = None;
+        }
+    }
+    
+    /// Handle dialog actions by sending appropriate backend commands
+    fn handle_dialog_action(&mut self, action: DialogAction) {
+        match action {
+            DialogAction::ChangeNick(new_nick) => {
+                let _ = self.action_tx.send(BackendAction::Nick(new_nick));
+            }
+            DialogAction::SetTopic { channel, topic } => {
+                let _ = self.action_tx.send(BackendAction::SetTopic { channel, topic });
+            }
+            DialogAction::JoinChannel(channel) => {
+                let _ = self.action_tx.send(BackendAction::Join(channel));
+            }
+            DialogAction::NetworkConnect(network) => {
+                if let Some(server_addr) = network.servers.first() {
+                    let parts: Vec<&str> = server_addr.split(':').collect();
+                    let server = parts[0].to_string();
+                    let port: u16 = parts
+                        .get(1)
+                        .and_then(|p| p.parse().ok())
+                        .unwrap_or(6667);
+
+                    let _ = self.action_tx.send(BackendAction::Connect {
+                        server,
+                        port,
+                        nickname: network.nick.clone(),
+                        username: network.nick.clone(),
+                        realname: format!("SLIRC User ({})", network.nick),
+                        use_tls: network.use_tls,
+                        auto_reconnect: network.auto_reconnect,
+                    });
+
+                    // Auto-join favorite channels
+                    for channel in &network.favorite_channels {
+                        let _ = self.action_tx.send(BackendAction::Join(channel.clone()));
+                    }
+                }
+            }
+            DialogAction::NetworkSave { index: _, network: _ } => {
+                // Network already saved in dialog, just need to persist
+                // This is handled when dialog closes
+            }
+            DialogAction::NetworkDelete(_) => {
+                // Network already deleted in dialog, just need to persist
+                // This is handled when dialog closes
+            }
         }
     }
 }

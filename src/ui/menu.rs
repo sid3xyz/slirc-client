@@ -4,7 +4,17 @@
 use eframe::egui;
 use crate::protocol::BackendAction;
 
+/// Actions that the menu can request
+#[derive(Debug, Clone, PartialEq)]
+pub enum MenuAction {
+    NetworkManager,
+    Help,
+    ChannelBrowser,
+}
+
 /// Render the traditional horizontal menu bar
+/// Returns Some(MenuAction) if an action was requested
+#[allow(clippy::too_many_arguments)]
 pub fn render_menu_bar(
     ctx: &egui::Context,
     ui: &mut egui::Ui,
@@ -12,13 +22,11 @@ pub fn render_menu_bar(
     active_buffer: &str,
     show_channel_list: &mut bool,
     show_user_list: &mut bool,
-    show_help_dialog: &mut bool,
-    network_manager_open: &mut bool,
-    show_channel_browser: &mut bool,
-    channel_list_loading: &mut bool,
     quick_switcher: &mut crate::ui::quick_switcher::QuickSwitcher,
     action_tx: &crossbeam_channel::Sender<BackendAction>,
-) {
+) -> Option<MenuAction> {
+    let mut menu_action: Option<MenuAction> = None;
+    
     egui::menu::bar(ui, |ui| {
         // File Menu
         ui.menu_button("File", |ui| {
@@ -27,7 +35,7 @@ pub fn render_menu_bar(
                     .on_hover_text("Connect to IRC server")
                     .clicked()
                 {
-                    *network_manager_open = true;
+                    menu_action = Some(MenuAction::NetworkManager);
                     ui.close_menu();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -55,7 +63,7 @@ pub fn render_menu_bar(
                     .on_hover_text("Manage saved IRC networks")
                     .clicked()
                 {
-                    *network_manager_open = true;
+                    menu_action = Some(MenuAction::NetworkManager);
                     ui.close_menu();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -82,7 +90,7 @@ pub fn render_menu_bar(
         ui.menu_button("Edit", |ui| {
             ui.add_enabled_ui(false, |ui| {
                 ui.horizontal(|ui| {
-                    ui.button("Copy");
+                    let _ = ui.button("Copy");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(egui::RichText::new("Ctrl+C").weak().small());
                     });
@@ -93,7 +101,7 @@ pub fn render_menu_bar(
 
             ui.add_enabled_ui(false, |ui| {
                 ui.horizontal(|ui| {
-                    ui.button("Find in Chat...");
+                    let _ = ui.button("Find in Chat...");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(egui::RichText::new("Ctrl+F").weak().small());
                     });
@@ -140,7 +148,7 @@ pub fn render_menu_bar(
 
             ui.add_enabled_ui(false, |ui| {
                 ui.horizontal(|ui| {
-                    ui.button("Zoom In");
+                    let _ = ui.button("Zoom In");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(egui::RichText::new("Ctrl++").weak().small());
                     });
@@ -149,7 +157,7 @@ pub fn render_menu_bar(
 
             ui.add_enabled_ui(false, |ui| {
                 ui.horizontal(|ui| {
-                    ui.button("Zoom Out");
+                    let _ = ui.button("Zoom Out");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(egui::RichText::new("Ctrl+-").weak().small());
                     });
@@ -158,7 +166,7 @@ pub fn render_menu_bar(
 
             ui.add_enabled_ui(false, |ui| {
                 ui.horizontal(|ui| {
-                    ui.button("Reset Zoom");
+                    let _ = ui.button("Reset Zoom");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(egui::RichText::new("Ctrl+0").weak().small());
                     });
@@ -210,8 +218,7 @@ pub fn render_menu_bar(
                         .clicked()
                     {
                         let _ = action_tx.send(BackendAction::List);
-                        *channel_list_loading = true;
-                        *show_channel_browser = true;
+                        menu_action = Some(MenuAction::ChannelBrowser);
                         ui.close_menu();
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -257,7 +264,7 @@ pub fn render_menu_bar(
                     .on_hover_text("Show keyboard shortcuts")
                     .clicked()
                 {
-                    *show_help_dialog = true;
+                    menu_action = Some(MenuAction::Help);
                     ui.close_menu();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -270,7 +277,7 @@ pub fn render_menu_bar(
                     .on_hover_text("List available IRC commands")
                     .clicked()
                 {
-                    *show_help_dialog = true;
+                    menu_action = Some(MenuAction::Help);
                     ui.close_menu();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -281,11 +288,11 @@ pub fn render_menu_bar(
             ui.separator();
 
             ui.add_enabled_ui(false, |ui| {
-                ui.button("Check for Updates");
+                let _ = ui.button("Check for Updates");
             });
 
             ui.add_enabled_ui(false, |ui| {
-                ui.button("Report Issue...");
+                let _ = ui.button("Report Issue...");
             });
 
             ui.separator();
@@ -296,4 +303,6 @@ pub fn render_menu_bar(
             }
         });
     });
+    
+    menu_action
 }

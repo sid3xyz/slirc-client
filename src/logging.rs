@@ -27,6 +27,7 @@ pub struct Logger {
     /// Channel to send log entries to the background thread
     tx: Sender<LogEntry>,
     /// Base directory for all logs
+    #[allow(dead_code)]
     log_dir: PathBuf,
 }
 
@@ -57,6 +58,7 @@ impl Logger {
     }
     
     /// Get the log directory path
+    #[allow(dead_code)]
     pub fn log_directory(&self) -> &PathBuf {
         &self.log_dir
     }
@@ -83,7 +85,7 @@ fn run_logger_thread(rx: Receiver<LogEntry>, log_dir: PathBuf) {
 /// Write a single log entry to the appropriate file
 fn write_log_entry(
     file_cache: &mut HashMap<String, BufWriter<File>>,
-    log_dir: &PathBuf,
+    log_dir: &std::path::Path,
     entry: &LogEntry,
 ) -> Result<(), String> {
     // Build path: logs/network/channel/YYYY-MM-DD.log
