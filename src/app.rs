@@ -496,11 +496,31 @@ impl eframe::App for SlircApp {
         self.status_messages
             .retain(|(_, t)| t.elapsed() < std::time::Duration::from_secs(4));
 
-        let dark_mode = ctx.style().visuals.dark_mode;
         let theme = self.get_theme();
-        let toolbar_bg = theme.surface[1];
 
-        // Single compact toolbar (HexChat style - no separate menu bar)
+        // Modern horizontal menu bar (Discord/Slack-inspired with IRC-specific menus)
+        egui::TopBottomPanel::top("menu_bar")
+            .frame(
+                egui::Frame::new()
+                    .fill(theme.surface[1])
+                    .inner_margin(egui::Margin::symmetric(8, 4))
+                    .stroke(egui::Stroke::new(1.0, theme.border_medium)),
+            )
+            .show(ctx, |ui| {
+                ui::menu::render_menu_bar(
+                    ctx,
+                    ui,
+                    self.is_connected,
+                    &self.active_buffer,
+                    &mut self.show_user_list,
+                    &mut self.show_help_dialog,
+                    &mut self.network_manager_open,
+                    &self.action_tx,
+                );
+            });
+
+        // Compact toolbar below menu bar (for quick actions)
+        let toolbar_bg = theme.surface[1];
         egui::TopBottomPanel::top("toolbar")
             .frame(
                 egui::Frame::new()
