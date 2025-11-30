@@ -296,74 +296,9 @@ impl eframe::App for SlircApp {
         // Purge old status messages (toasts) older than 4 seconds
         self.state.purge_old_status_messages(4);
 
-        let theme = self.get_theme();
-
-        // Modern horizontal menu bar (Discord/Slack-inspired with IRC-specific menus)
-        egui::TopBottomPanel::top("menu_bar")
-            .frame(
-                egui::Frame::new()
-                    .fill(theme.surface[1])
-                    .inner_margin(egui::Margin::symmetric(8, 4))
-                    .stroke(egui::Stroke::new(1.0, theme.border_medium)),
-            )
-            .show(ctx, |ui| {
-                if let Some(menu_action) = ui::menu::render_menu_bar(
-                    ctx,
-                    ui,
-                    self.state.is_connected,
-                    &self.state.active_buffer,
-                    &mut self.show_channel_list,
-                    &mut self.show_user_list,
-                    &mut self.quick_switcher,
-                    &self.action_tx,
-                ) {
-                    match menu_action {
-                        ui::menu::MenuAction::NetworkManager => {
-                            self.dialogs.open_network_manager(self.state.networks.clone());
-                        }
-                        ui::menu::MenuAction::Help => {
-                            self.dialogs.show_help();
-                        }
-                        ui::menu::MenuAction::ChannelBrowser => {
-                            self.dialogs.open_channel_browser();
-                        }
-                    }
-                }
-            });
-
-        // Compact toolbar below menu bar (for quick actions)
-        let toolbar_bg = theme.surface[1];
-        egui::TopBottomPanel::top("toolbar")
-            .frame(
-                egui::Frame::new()
-                    .fill(toolbar_bg)
-                    .inner_margin(egui::Margin::symmetric(12, 8))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        theme.border_medium,
-                    )),
-            )
-            .show(ctx, |ui| {
-                if let Some(toolbar_action) = ui::toolbar::render_toolbar(
-                    ui,
-                    ctx,
-                    &mut self.server_input,
-                    &mut self.nickname_input,
-                    &mut self.input.channel_input,
-                    self.state.is_connected,
-                    &mut self.use_tls,
-                    &self.action_tx,
-                ) {
-                    match toolbar_action {
-                        ui::toolbar::ToolbarAction::Connect => {
-                            self.do_connect();
-                        }
-                        ui::toolbar::ToolbarAction::OpenNickChangeDialog => {
-                            self.dialogs.open_nick_change(&self.nickname_input);
-                        }
-                    }
-                }
-            });
+        // Render UI sections
+        self.render_menu_bar(ctx);
+        self.render_toolbar(ctx);
 
         // Left panel: Buffer list (vertical tabs similar to HexChat)
         if self.show_channel_list {
@@ -399,9 +334,190 @@ impl eframe::App for SlircApp {
         }
 
         // Bottom panel: Message input with polished styling
+        let _enter_pressed = self.render_input_panel(ctx);
+
+        // Central panel: Messages with dedicated topic bar and styled background
+        self.render_central_panel(ctx);
+
+        // Context menu popup (as a floating window)
+        self.render_context_menu(ctx);
+
+        // Floating buffer windows
+        self.render_floating_windows(ctx);
+
+        // Render dialogs using the new self-contained dialog pattern
+        self.render_dialogs(ctx);
+
+        // Quick switcher overlay (Ctrl+K)
+        if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.state.buffers) {
+            self.state.active_buffer = selected_buffer.clone();
+            if let Some(buffer) = self.state.buffers.get_mut(&selected_buffer) {
+                buffer.clear_unread();
+                buffer.has_highlight = false;
+            }
+        }
+    }
+}
+
+impl SlircApp {
+    /// Render all dialogs and handle their actions
+    fn render_dialogs(&mut self, ctx: &egui::Context) {
+        // Floating status toasts (top-right corner)
+        ui::dialogs::render_status_toasts(ctx, &self.state.status_messages);
+
+        // Delegate to DialogManager for all dialog rendering
+        let (actions, networks_to_save) = self.dialogs.render(ctx);
+        
+        // Process actions
+        for action in actions {
+            self.handle_dialog_action(action);
+        }
+        
+        // Save networks if needed
+        if let Some(networks) = networks_to_save {
+            self.state.networks = networks;
+            self.save_networks();
+        }
+    }
+
+    /// Handle dialog actions by sending appropriate backend commands
+    fn handle_dialog_action(&mut self, action: DialogAction) {
+        match action {
+            DialogAction::ChangeNick(new_nick) => {
+                let _ = self.action_tx.send(BackendAction::Nick(new_nick));
+            }
+            DialogAction::SetTopic { channel, topic } => {
+                let _ = self.action_tx.send(BackendAction::SetTopic { channel, topic });
+            }
+            DialogAction::JoinChannel(channel) => {
+                let _ = self.action_tx.send(BackendAction::Join(channel));
+            }
+            DialogAction::NetworkConnect(network) => {
+                if let Some(server_addr) = network.servers.first() {
+                    let parts: Vec<&str> = server_addr.split(':').collect();
+                    let server = parts[0].to_string();
+                    let port: u16 = parts
+                        .get(1)
+                        .and_then(|p| p.parse().ok())
+                        .unwrap_or(6667);
+
+                    // Set state fields for event processing
+                    self.state.server_name = server_addr.clone();
+                    self.state.our_nick = network.nick.clone();
+
+                    let _ = self.action_tx.send(BackendAction::Connect {
+                        server,
+                        port,
+                        nickname: network.nick.clone(),
+                        username: network.nick.clone(),
+                        realname: format!("SLIRC User ({})", network.nick),
+                        use_tls: network.use_tls,
+                        auto_reconnect: network.auto_reconnect,
+                        sasl_password: load_nickserv_password(&network.name),
+                    });
+
+                    // Auto-join favorite channels
+                    for channel in &network.favorite_channels {
+                        let _ = self.action_tx.send(BackendAction::Join(channel.clone()));
+                    }
+                }
+            }
+            DialogAction::NetworkSave { index: _, network: _ } => {
+                // Network already saved in dialog, just need to persist
+                // This is handled when dialog closes
+            }
+            DialogAction::NetworkDelete(_) => {
+                // Network already deleted in dialog, just need to persist
+                // This is handled when dialog closes
+            }
+        }
+    }
+
+    /// Render the menu bar at the top of the window
+    fn render_menu_bar(&mut self, ctx: &egui::Context) {
+        let theme = self.get_theme();
+
+        // Modern horizontal menu bar (Discord/Slack-inspired with IRC-specific menus)
+        egui::TopBottomPanel::top("menu_bar")
+            .frame(
+                egui::Frame::new()
+                    .fill(theme.surface[1])
+                    .inner_margin(egui::Margin::symmetric(8, 4))
+                    .stroke(egui::Stroke::new(1.0, theme.border_medium)),
+            )
+            .show(ctx, |ui| {
+                if let Some(menu_action) = ui::menu::render_menu_bar(
+                    ctx,
+                    ui,
+                    self.state.is_connected,
+                    &self.state.active_buffer,
+                    &mut self.show_channel_list,
+                    &mut self.show_user_list,
+                    &mut self.quick_switcher,
+                    &self.action_tx,
+                ) {
+                    match menu_action {
+                        ui::menu::MenuAction::NetworkManager => {
+                            self.dialogs.open_network_manager(self.state.networks.clone());
+                        }
+                        ui::menu::MenuAction::Help => {
+                            self.dialogs.show_help();
+                        }
+                        ui::menu::MenuAction::ChannelBrowser => {
+                            self.dialogs.open_channel_browser();
+                        }
+                    }
+                }
+            });
+    }
+
+    /// Render the toolbar below the menu bar
+    fn render_toolbar(&mut self, ctx: &egui::Context) {
+        let theme = self.get_theme();
+
+        // Compact toolbar below menu bar (for quick actions)
+        let toolbar_bg = theme.surface[1];
+        egui::TopBottomPanel::top("toolbar")
+            .frame(
+                egui::Frame::new()
+                    .fill(toolbar_bg)
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        theme.border_medium,
+                    )),
+            )
+            .show(ctx, |ui| {
+                if let Some(toolbar_action) = ui::toolbar::render_toolbar(
+                    ui,
+                    ctx,
+                    &mut self.server_input,
+                    &mut self.nickname_input,
+                    &mut self.input.channel_input,
+                    self.state.is_connected,
+                    &mut self.use_tls,
+                    &self.action_tx,
+                ) {
+                    match toolbar_action {
+                        ui::toolbar::ToolbarAction::Connect => {
+                            self.do_connect();
+                        }
+                        ui::toolbar::ToolbarAction::OpenNickChangeDialog => {
+                            self.dialogs.open_nick_change(&self.nickname_input);
+                        }
+                    }
+                }
+            });
+    }
+
+    /// Render the input panel at the bottom of the window
+    /// Returns Some(true) if Enter was pressed and message sent (for focus control)
+    fn render_input_panel(&mut self, ctx: &egui::Context) -> Option<bool> {
         let dark_mode = ctx.style().visuals.dark_mode;
         let theme = self.get_theme();
         let input_bg = theme.surface[1];
+
+        let mut enter_pressed = false;
 
         egui::TopBottomPanel::bottom("input_panel")
             .frame(
@@ -442,7 +558,7 @@ impl eframe::App for SlircApp {
 
                 // Detect Enter (without Shift) to send a message. Shift+Enter inserts newline in the
                 // multiline text edit by default.
-                let enter_pressed = response.has_focus()
+                let enter_detected = response.has_focus()
                     && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
 
                 // Input history navigation
@@ -528,7 +644,7 @@ impl eframe::App for SlircApp {
                     self.input.completion_prefix = None;
                 }
 
-                if enter_pressed && !self.input.message_input.is_empty() {
+                if enter_detected && !self.input.message_input.is_empty() {
                     // If it begins with a slash, treat as a command
                     if self.input.message_input.starts_with('/') {
                         if commands::handle_user_command(
@@ -563,12 +679,21 @@ impl eframe::App for SlircApp {
                     self.input.history_saved_input = None;
                     self.input.message_input.clear();
                     response.request_focus();
+                    enter_pressed = true;
                 }
                 }); // close input_frame
             });
         });
 
-        // Central panel: Messages with dedicated topic bar and styled background
+        if enter_pressed {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    /// Render the central panel with messages
+    fn render_central_panel(&mut self, ctx: &egui::Context) {
         let theme = self.get_theme();
         let chat_bg = theme.surface[2];
         egui::CentralPanel::default()
@@ -603,8 +728,10 @@ impl eframe::App for SlircApp {
                     }
                 }
             });
+    }
 
-        // Context menu popup (as a floating window)
+    /// Render context menu popup (as a floating window)
+    fn render_context_menu(&mut self, ctx: &egui::Context) {
         if self.context_menu_visible {
             if let Some(target) = self.context_menu_target.clone() {
                 // If the target starts with "user:", this is a user context menu
@@ -721,8 +848,10 @@ impl eframe::App for SlircApp {
                 }
             }
         }
+    }
 
-        // Floating buffer windows
+    /// Render floating buffer windows
+    fn render_floating_windows(&mut self, ctx: &egui::Context) {
         for open_name in self.open_windows.clone() {
             let mut open = true;
             egui::Window::new(format!("Window: {}", open_name))
@@ -779,93 +908,6 @@ impl eframe::App for SlircApp {
                 });
             if !open {
                 self.open_windows.remove(&open_name);
-            }
-        }
-
-        // Render dialogs using the new self-contained dialog pattern
-        self.render_dialogs(ctx);
-
-        // Quick switcher overlay (Ctrl+K)
-        if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.state.buffers) {
-            self.state.active_buffer = selected_buffer.clone();
-            if let Some(buffer) = self.state.buffers.get_mut(&selected_buffer) {
-                buffer.clear_unread();
-                buffer.has_highlight = false;
-            }
-        }
-    }
-}
-
-impl SlircApp {
-    /// Render all dialogs and handle their actions
-    fn render_dialogs(&mut self, ctx: &egui::Context) {
-        // Floating status toasts (top-right corner)
-        ui::dialogs::render_status_toasts(ctx, &self.state.status_messages);
-
-        // Delegate to DialogManager for all dialog rendering
-        let (actions, networks_to_save) = self.dialogs.render(ctx);
-        
-        // Process actions
-        for action in actions {
-            self.handle_dialog_action(action);
-        }
-        
-        // Save networks if needed
-        if let Some(networks) = networks_to_save {
-            self.state.networks = networks;
-            self.save_networks();
-        }
-    }
-
-    /// Handle dialog actions by sending appropriate backend commands
-    fn handle_dialog_action(&mut self, action: DialogAction) {
-        match action {
-            DialogAction::ChangeNick(new_nick) => {
-                let _ = self.action_tx.send(BackendAction::Nick(new_nick));
-            }
-            DialogAction::SetTopic { channel, topic } => {
-                let _ = self.action_tx.send(BackendAction::SetTopic { channel, topic });
-            }
-            DialogAction::JoinChannel(channel) => {
-                let _ = self.action_tx.send(BackendAction::Join(channel));
-            }
-            DialogAction::NetworkConnect(network) => {
-                if let Some(server_addr) = network.servers.first() {
-                    let parts: Vec<&str> = server_addr.split(':').collect();
-                    let server = parts[0].to_string();
-                    let port: u16 = parts
-                        .get(1)
-                        .and_then(|p| p.parse().ok())
-                        .unwrap_or(6667);
-
-                    // Set state fields for event processing
-                    self.state.server_name = server_addr.clone();
-                    self.state.our_nick = network.nick.clone();
-
-                    let _ = self.action_tx.send(BackendAction::Connect {
-                        server,
-                        port,
-                        nickname: network.nick.clone(),
-                        username: network.nick.clone(),
-                        realname: format!("SLIRC User ({})", network.nick),
-                        use_tls: network.use_tls,
-                        auto_reconnect: network.auto_reconnect,
-                        sasl_password: load_nickserv_password(&network.name),
-                    });
-
-                    // Auto-join favorite channels
-                    for channel in &network.favorite_channels {
-                        let _ = self.action_tx.send(BackendAction::Join(channel.clone()));
-                    }
-                }
-            }
-            DialogAction::NetworkSave { index: _, network: _ } => {
-                // Network already saved in dialog, just need to persist
-                // This is handled when dialog closes
-            }
-            DialogAction::NetworkDelete(_) => {
-                // Network already deleted in dialog, just need to persist
-                // This is handled when dialog closes
             }
         }
     }
