@@ -8,6 +8,9 @@ use crate::protocol::BackendAction;
 /// Actions that the toolbar can request
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolbarAction {
+    /// User clicked Connect button
+    Connect,
+    /// User wants to change nickname
     OpenNickChangeDialog,
 }
 
@@ -26,12 +29,12 @@ pub fn render_toolbar(
 ) -> Option<ToolbarAction> {
     let mut toolbar_action: Option<ToolbarAction> = None;
     let dark_mode = ctx.style().visuals.dark_mode;
-    let text_secondary = if dark_mode { 
-        Color32::from_rgb(148, 155, 164) 
-    } else { 
-        Color32::from_rgb(99, 100, 102) 
+    let text_secondary = if dark_mode {
+        Color32::from_rgb(148, 155, 164)
+    } else {
+        Color32::from_rgb(99, 100, 102)
     };
-    
+
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
@@ -53,20 +56,7 @@ pub fn render_toolbar(
             ui.checkbox(use_tls, "🔒 TLS");
 
             if ui.button("Connect").clicked() {
-                let parts: Vec<&str> = server_input.split(':').collect();
-                let server = parts[0].to_string();
-                let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(if *use_tls { 6697 } else { 6667 });
-
-                let _ = action_tx.send(BackendAction::Connect {
-                    server,
-                    port,
-                    nickname: nickname_input.clone(),
-                    username: nickname_input.clone(),
-                    realname: format!("SLIRC User ({})", nickname_input),
-                    use_tls: *use_tls,
-                    auto_reconnect: true, // Enable auto-reconnect for manual connections
-                    sasl_password: None, // No SASL for quick-connect
-                });
+                toolbar_action = Some(ToolbarAction::Connect);
             }
         } else {
             // Nick button and channel join when connected
@@ -117,6 +107,6 @@ pub fn render_toolbar(
             }
         });
     });
-    
+
     toolbar_action
 }

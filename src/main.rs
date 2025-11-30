@@ -41,12 +41,12 @@ fn main() -> eframe::Result<()> {
         Box::new(|cc| {
             // Setup modern fonts (Inter + JetBrains Mono)
             cc.egui_ctx.set_fonts(fonts::setup_fonts());
-            
+
             // Setup modern text styles
             cc.egui_ctx.all_styles_mut(|style| {
                 style.text_styles = ui::theme::configure_text_styles();
             });
-            
+
             Ok(Box::new(SlircApp::new(cc)))
         }),
     )
@@ -60,7 +60,7 @@ mod tests {
     use crate::protocol::{BackendAction, GuiEvent, UserInfo};
     use crate::state::ClientState;
     use crossbeam_channel::unbounded;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashSet;
 
     /// Helper to create a test SlircApp instance
     fn create_test_app() -> (
@@ -70,7 +70,7 @@ mod tests {
     ) {
         let (action_tx, action_rx) = unbounded::<BackendAction>();
         let (event_tx, event_rx) = unbounded::<GuiEvent>();
-        
+
         // Create state with pre-populated System buffer
         let mut state = ClientState::new();
         state.logger = None; // No logger in tests
@@ -539,20 +539,7 @@ mod tests {
             })
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         let buffer = app.state.buffers.get("#test").unwrap();
         assert!(buffer.users.iter().any(|u| u.nick == "alice"));
@@ -579,20 +566,7 @@ mod tests {
             })
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         let buffer = app.state.buffers.get("#test").unwrap();
         assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
@@ -619,20 +593,7 @@ mod tests {
             })
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         let buffer = app.state.buffers.get("#test").unwrap();
         assert!(!buffer.users.iter().any(|u| u.nick == "bob"));
@@ -660,20 +621,7 @@ mod tests {
             })
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert_eq!(app.nickname_input, "alice_away");
         let buffer = app.state.buffers.get("#test").unwrap();
@@ -687,23 +635,12 @@ mod tests {
         let (mut app, event_tx, _) = create_test_app();
         app.state.is_connected = false;
         app.server_input = "irc.example.com".into();
+        // Set state.server_name to simulate connection initiation
+        app.state.server_name = "irc.example.com".into();
 
         event_tx.send(GuiEvent::Connected).unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert!(app.state.is_connected);
         assert!(app.state.expanded_networks.contains("irc.example.com"));
@@ -720,20 +657,7 @@ mod tests {
             .send(GuiEvent::Disconnected("Connection lost".to_string()))
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert!(!app.state.is_connected);
         assert!(app.state.system_log.iter().any(|m| m.contains("Disconnected")));
@@ -749,20 +673,7 @@ mod tests {
             .send(GuiEvent::Error("Test error message".to_string()))
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert!(app.state.system_log.len() > original_log_size);
         assert!(app.state.system_log.iter().any(|m| m.contains("Error")));
@@ -779,20 +690,7 @@ mod tests {
             .send(GuiEvent::RawMessage("PING :server".to_string()))
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert!(app.state.system_log.len() > original_log_size);
         assert!(app.state.system_log.iter().any(|m| m.contains("PING :server")));
@@ -808,20 +706,7 @@ mod tests {
             .send(GuiEvent::JoinedChannel("#newchan".to_string()))
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert_eq!(app.state.active_buffer, "#newchan");
         assert!(app.state.buffers.contains_key("#newchan"));
@@ -840,20 +725,7 @@ mod tests {
             .send(GuiEvent::PartedChannel("#test".to_string()))
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert!(!app.state.buffers.contains_key("#test"));
         assert!(!app.state.buffers_order.contains(&"#test".to_string()));
@@ -876,20 +748,7 @@ mod tests {
             })
             .unwrap();
 
-        crate::events::process_events(
-            &app.event_rx,
-            &mut app.state.is_connected,
-            &mut app.state.buffers,
-            &mut app.state.buffers_order,
-            &mut app.state.active_buffer,
-            &mut app.nickname_input,
-            &mut app.state.system_log,
-            &mut app.state.expanded_networks,
-            &mut app.state.status_messages,
-            &app.server_input,
-            
-            &app.state.logger,
-        );
+        app.process_events();
 
         assert!(app.state.buffers.contains_key("alice"));
         let buffer = app.state.buffers.get("alice").unwrap();

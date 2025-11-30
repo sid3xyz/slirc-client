@@ -64,7 +64,7 @@ pub struct SlircApp {
 
     // Quick switcher (Ctrl+K)
     pub quick_switcher: ui::quick_switcher::QuickSwitcher,
-    
+
     // Dialogs - Option<Dialog> pattern: None = closed, Some = open with state
     pub help_dialog: HelpDialog,
     pub nick_change_dialog: Option<NickChangeDialog>,
@@ -136,7 +136,7 @@ impl SlircApp {
             show_channel_list: true,
             show_user_list: true,
             quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
-            
+
             // Dialogs - Option pattern for open/closed state
             help_dialog: HelpDialog::new(),
             nick_change_dialog: None,
@@ -171,6 +171,10 @@ impl SlircApp {
                         let parts: Vec<&str> = server_addr.split(':').collect();
                         let server = parts[0].to_string();
                         let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(6667);
+
+                        // Set state fields for event processing
+                        app.state.server_name = server_addr.clone();
+                        app.state.our_nick = network.nick.clone();
 
                         let _ = app.action_tx.send(BackendAction::Connect {
                             server,
@@ -215,13 +219,13 @@ impl SlircApp {
         let mut matches: Vec<String> = Vec::new();
         let mut search_prefix = prefix;
         let mut keep_lead = "";
-        
+
         // Command completion when prefix starts with /
         if prefix.starts_with('/') {
             // List of available IRC commands
             let commands = vec![
-                "/join", "/j", "/part", "/p", "/msg", "/privmsg", "/me", 
-                "/whois", "/w", "/topic", "/t", "/kick", "/k", "/nick", 
+                "/join", "/j", "/part", "/p", "/msg", "/privmsg", "/me",
+                "/whois", "/w", "/topic", "/t", "/kick", "/k", "/nick",
                 "/quit", "/exit", "/help"
             ];
             for cmd in commands {
@@ -234,7 +238,7 @@ impl SlircApp {
             search_prefix = stripped;
             keep_lead = "@";
         }
-        
+
         if prefix.starts_with('#') || prefix.starts_with('&') {
             // channel completions
             for b in &self.state.buffers_order {
@@ -326,7 +330,7 @@ impl SlircApp {
     pub fn process_events(&mut self) {
         // Collect channel list events separately
         let mut regular_events = Vec::new();
-        
+
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 GuiEvent::ChannelListItem {
@@ -354,27 +358,46 @@ impl SlircApp {
                 }
             }
         }
-        
+
         // Process regular events
         for event in regular_events {
             self.process_single_event(event);
         }
     }
-    
+
     fn process_single_event(&mut self, event: GuiEvent) {
-        events::process_single_event(
-            event,
-            &mut self.state.is_connected,
-            &mut self.state.buffers,
-            &mut self.state.buffers_order,
-            &mut self.state.active_buffer,
-            &mut self.nickname_input,
-            &mut self.state.system_log,
-            &mut self.state.expanded_networks,
-            &mut self.state.status_messages,
-            &self.server_input,
-            &self.state.logger,
-        );
+        // Process event and check if nick changed
+        if let Some(new_nick) = events::process_single_event(&mut self.state, event) {
+            // Update UI nickname field when server confirms nick change
+            self.nickname_input = new_nick;
+        }
+    }
+
+    /// Initiate a connection to the server using current UI inputs.
+    /// Sets state.server_name and state.our_nick before sending connect action.
+    fn do_connect(&mut self) {
+        // Parse server:port from input
+        let parts: Vec<&str> = self.server_input.split(':').collect();
+        let server = parts[0].to_string();
+        let port: u16 = parts
+            .get(1)
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(if self.use_tls { 6697 } else { 6667 });
+
+        // Set state fields for event processing (like Halloy's configured_nick pattern)
+        self.state.server_name = self.server_input.clone();
+        self.state.our_nick = self.nickname_input.clone();
+
+        let _ = self.action_tx.send(BackendAction::Connect {
+            server,
+            port,
+            nickname: self.nickname_input.clone(),
+            username: self.nickname_input.clone(),
+            realname: format!("SLIRC User ({})", self.nickname_input),
+            use_tls: self.use_tls,
+            auto_reconnect: true,
+            sasl_password: None,
+        });
     }
 }
 
@@ -467,6 +490,9 @@ impl eframe::App for SlircApp {
                     &self.action_tx,
                 ) {
                     match toolbar_action {
+                        ui::toolbar::ToolbarAction::Connect => {
+                            self.do_connect();
+                        }
                         ui::toolbar::ToolbarAction::OpenNickChangeDialog => {
                             self.nick_change_dialog = Some(NickChangeDialog::new(&self.nickname_input));
                         }
@@ -542,7 +568,7 @@ impl eframe::App for SlircApp {
                         .frame(false)
                         .hint_text("Type a message... (Enter to send)"),
                 );
-                
+
                 // Draw focus ring (two rects: outer border, inner transparent)
                 if response.has_focus() {
                     let outer = response.rect.expand(2.0);
@@ -682,13 +708,19 @@ impl eframe::App for SlircApp {
                     .inner_margin(12.0),
             )
             .show(ctx, |ui| {
+                // Use state.our_nick if connected, otherwise fall back to UI input
+                let current_nick = if self.state.our_nick.is_empty() {
+                    &self.nickname_input
+                } else {
+                    &self.state.our_nick
+                };
                 if let Some(msg_action) = ui::messages::render_messages(
                     ctx,
                     ui,
                     &self.state.active_buffer,
                     &self.state.buffers,
                     &self.state.system_log,
-                    &self.nickname_input,
+                    current_nick,
                 ) {
                     match msg_action {
                         ui::messages::MessagePanelAction::OpenTopicEditor(channel) => {
@@ -882,7 +914,7 @@ impl eframe::App for SlircApp {
 
         // Render dialogs using the new self-contained dialog pattern
         self.render_dialogs(ctx);
-        
+
         // Quick switcher overlay (Ctrl+K)
         if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.state.buffers) {
             self.state.active_buffer = selected_buffer.clone();
@@ -899,10 +931,10 @@ impl SlircApp {
     fn render_dialogs(&mut self, ctx: &egui::Context) {
         // Floating status toasts (top-right corner)
         ui::dialogs::render_status_toasts(ctx, &self.state.status_messages);
-        
+
         // Help dialog (F1) - simple toggle, no actions
         self.help_dialog.render(ctx);
-        
+
         // Collect actions and state changes first to avoid borrow issues
         let mut actions: Vec<DialogAction> = Vec::new();
         let mut close_nick_dialog = false;
@@ -911,7 +943,7 @@ impl SlircApp {
         let mut save_networks = false;
         let mut networks_to_save: Option<Vec<crate::config::Network>> = None;
         let mut close_channel_browser = false;
-        
+
         // Nick change dialog
         if let Some(ref mut dialog) = self.nick_change_dialog {
             if let Some(action) = dialog.render(ctx) {
@@ -921,7 +953,7 @@ impl SlircApp {
                 close_nick_dialog = true;
             }
         }
-        
+
         // Topic editor dialog
         if let Some(ref mut dialog) = self.topic_editor_dialog {
             let (action, still_open) = dialog.render(ctx);
@@ -932,7 +964,7 @@ impl SlircApp {
                 close_topic_dialog = true;
             }
         }
-        
+
         // Network manager dialog
         if let Some(ref mut dialog) = self.network_manager_dialog {
             let (action, still_open) = dialog.render(ctx);
@@ -947,7 +979,7 @@ impl SlircApp {
                 close_network_dialog = true;
             }
         }
-        
+
         // Channel browser dialog
         if let Some(ref mut dialog) = self.channel_browser_dialog {
             let (action, still_open) = dialog.render(ctx);
@@ -958,12 +990,12 @@ impl SlircApp {
                 close_channel_browser = true;
             }
         }
-        
+
         // Now process collected actions (no longer borrowing dialog fields)
         for action in actions {
             self.handle_dialog_action(action);
         }
-        
+
         // Close dialogs as needed
         if close_nick_dialog {
             self.nick_change_dialog = None;
@@ -984,7 +1016,7 @@ impl SlircApp {
             self.channel_browser_dialog = None;
         }
     }
-    
+
     /// Handle dialog actions by sending appropriate backend commands
     fn handle_dialog_action(&mut self, action: DialogAction) {
         match action {
@@ -1005,6 +1037,10 @@ impl SlircApp {
                         .get(1)
                         .and_then(|p| p.parse().ok())
                         .unwrap_or(6667);
+
+                    // Set state fields for event processing
+                    self.state.server_name = server_addr.clone();
+                    self.state.our_nick = network.nick.clone();
 
                     let _ = self.action_tx.send(BackendAction::Connect {
                         server,

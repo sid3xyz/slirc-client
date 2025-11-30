@@ -20,6 +20,12 @@ pub struct ClientState {
     /// Whether we are currently connected to a server.
     pub is_connected: bool,
 
+    /// The server we are connected to (for logging/display).
+    pub server_name: String,
+
+    /// Our current nickname on the server (updated on NickChanged).
+    pub our_nick: String,
+
     /// Message buffers keyed by channel/query name.
     pub buffers: HashMap<String, ChannelBuffer>,
 
@@ -50,6 +56,8 @@ impl ClientState {
     pub fn new() -> Self {
         let mut state = Self {
             is_connected: false,
+            server_name: String::new(),
+            our_nick: String::new(),
             buffers: HashMap::new(),
             buffers_order: vec!["System".into()],
             active_buffer: "System".into(),
@@ -135,9 +143,23 @@ mod tests {
     fn test_client_state_new() {
         let state = ClientState::new();
         assert!(!state.is_connected);
+        assert!(state.server_name.is_empty());
+        assert!(state.our_nick.is_empty());
         assert!(state.buffers.contains_key("System"));
         assert_eq!(state.active_buffer, "System");
         assert_eq!(state.buffers_order, vec!["System"]);
+    }
+
+    #[test]
+    fn test_connection_state() {
+        let mut state = ClientState::new();
+        state.server_name = "irc.example.net:6667".to_string();
+        state.our_nick = "testuser".to_string();
+        state.is_connected = true;
+
+        assert_eq!(state.server_name, "irc.example.net:6667");
+        assert_eq!(state.our_nick, "testuser");
+        assert!(state.is_connected);
     }
 
     #[test]
