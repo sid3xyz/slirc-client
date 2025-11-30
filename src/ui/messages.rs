@@ -1,9 +1,10 @@
-//! Message rendering for the central chat panel.
+//! Modern message rendering for the central chat panel.
+//! Features: message grouping, avatars, hover states, improved typography.
 
 use eframe::egui::{self, Color32, FontFamily, FontId};
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
-use crate::ui::theme::spacing;
+use crate::ui::theme::{self, dark, panel_colors, spacing, text_colors};
 
 /// Render the central message panel with topic bar and message list.
 pub fn render_messages(
@@ -17,224 +18,408 @@ pub fn render_messages(
 ) {
     let dark_mode = ui.style().visuals.dark_mode;
 
-    // Topic bar (HexChat style - clean dedicated bar above messages)
+    // Topic bar - modern style with subtle background
     if active_buffer != "System" {
-        egui::TopBottomPanel::top("topic_bar").show_inside(ui, |ui| {
-            // Add subtle background color for visual separation
-            let bg_color = if dark_mode {
-                egui::Color32::from_rgb(32, 32, 38)
-            } else {
-                egui::Color32::from_rgb(242, 242, 246)
-            };
-            ui.painter()
-                .rect_filled(ui.available_rect_before_wrap(), 0.0, bg_color);
+        render_topic_bar(ui, active_buffer, buffers, nickname, topic_editor_open, dark_mode);
+    }
 
+    // Messages area with improved styling
+    egui::ScrollArea::vertical()
+        .auto_shrink([false; 2])
+        .stick_to_bottom(true)
+        .show(ui, |ui| {
+            ui.add_space(8.0);
+
+            if active_buffer == "System" {
+                render_system_log(ui, system_log, dark_mode);
+            } else if let Some(buffer) = buffers.get(active_buffer) {
+                render_grouped_messages(ui, buffer, nickname, dark_mode);
+            }
+
+            ui.add_space(8.0);
+        });
+}
+
+/// Render topic bar with modern styling
+fn render_topic_bar(
+    ui: &mut egui::Ui,
+    active_buffer: &str,
+    buffers: &std::collections::HashMap<String, ChannelBuffer>,
+    nickname: &str,
+    topic_editor_open: &mut Option<String>,
+    dark_mode: bool,
+) {
+    let bg_color = if dark_mode {
+        dark::BG_BASE
+    } else {
+        Color32::from_rgb(248, 249, 252)
+    };
+
+    egui::TopBottomPanel::top("topic_bar")
+        .frame(
+            egui::Frame::new()
+                .fill(bg_color)
+                .inner_margin(egui::Margin::symmetric(16, 10))
+                .stroke(egui::Stroke::new(1.0, panel_colors::separator(dark_mode))),
+        )
+        .show_inside(ui, |ui| {
             if let Some(buffer) = buffers.get(active_buffer) {
                 let topic_text = if buffer.topic.is_empty() {
-                    "No topic is set"
+                    "No topic set — Double-click to set one"
                 } else {
                     &buffer.topic
                 };
 
                 let is_op = buffer.users.iter().any(|u| {
-                    u.nick == nickname && crate::ui::theme::prefix_rank(u.prefix) >= 3
+                    u.nick == nickname && theme::prefix_rank(u.prefix) >= 3
                 });
 
-                ui.horizontal(|ui| {
-                    ui.add_space(6.0);
-                    let topic_response = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(topic_text)
-                                .italics()
-                                .color(if dark_mode {
-                                    egui::Color32::from_gray(160)
-                                } else {
-                                    egui::Color32::from_gray(100)
-                                }),
-                        )
-                        .wrap()
-                        .sense(if is_op {
-                            egui::Sense::click()
-                        } else {
-                            egui::Sense::hover()
-                        }),
-                    );
+                let topic_response = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(topic_text)
+                            .size(13.0)
+                            .color(text_colors::secondary(dark_mode)),
+                    )
+                    .wrap()
+                    .sense(if is_op {
+                        egui::Sense::click()
+                    } else {
+                        egui::Sense::hover()
+                    }),
+                );
 
-                    if is_op && topic_response.double_clicked() {
-                        *topic_editor_open = Some(active_buffer.to_string());
-                    }
-                    if is_op {
-                        topic_response.on_hover_text("Double-click to edit topic");
-                    }
-                });
-            }
-        });
-    }
-
-    // Messages area
-    egui::ScrollArea::vertical()
-        .auto_shrink([false; 2])
-        .stick_to_bottom(true)
-        .show(ui, |ui| {
-            // Improved spacing between messages for readability
-            ui.spacing_mut().item_spacing.y = spacing::MESSAGE_SPACING_Y;
-
-            if active_buffer == "System" {
-                // Show system log
-                for line in system_log {
-                    ui.label(line);
+                if is_op && topic_response.double_clicked() {
+                    *topic_editor_open = Some(active_buffer.to_string());
                 }
-            } else if let Some(buffer) = buffers.get(active_buffer) {
-                for msg in &buffer.messages {
-                    let mention = msg.text.contains(nickname);
-                    render_message(ui, msg, buffer, nickname, mention, dark_mode);
+                if is_op {
+                    topic_response.on_hover_text("Double-click to edit topic");
                 }
             }
         });
 }
 
-/// Render a single message based on its type.
-fn render_message(
+/// Render system log with modern styling
+fn render_system_log(ui: &mut egui::Ui, system_log: &[String], dark_mode: bool) {
+    for line in system_log {
+        ui.horizontal(|ui| {
+            ui.add_space(16.0);
+            ui.label(
+                egui::RichText::new(line)
+                    .size(13.0)
+                    .color(text_colors::muted(dark_mode)),
+            );
+        });
+        ui.add_space(2.0);
+    }
+}
+
+/// Group consecutive messages from the same sender
+struct MessageGroup<'a> {
+    sender: &'a str,
+    messages: Vec<&'a RenderedMessage>,
+    first_timestamp: &'a str,
+    is_system: bool,
+}
+
+/// Group messages by sender for modern display
+fn group_messages(messages: &[RenderedMessage]) -> Vec<MessageGroup<'_>> {
+    let mut groups: Vec<MessageGroup<'_>> = Vec::new();
+
+    for msg in messages {
+        let is_system = matches!(
+            msg.msg_type,
+            MessageType::Join | MessageType::Part | MessageType::Quit | MessageType::NickChange | MessageType::Topic
+        );
+
+        // Always start new group for system messages
+        if is_system {
+            groups.push(MessageGroup {
+                sender: &msg.sender,
+                messages: vec![msg],
+                first_timestamp: &msg.timestamp,
+                is_system: true,
+            });
+            continue;
+        }
+
+        // Check if we should continue the previous group
+        let should_group = groups.last().map_or(false, |last| {
+            !last.is_system
+                && last.sender == msg.sender
+                && matches!(msg.msg_type, MessageType::Normal | MessageType::Action | MessageType::Notice)
+        });
+
+        if should_group {
+            groups.last_mut().unwrap().messages.push(msg);
+        } else {
+            groups.push(MessageGroup {
+                sender: &msg.sender,
+                messages: vec![msg],
+                first_timestamp: &msg.timestamp,
+                is_system: false,
+            });
+        }
+    }
+
+    groups
+}
+
+/// Render messages with grouping and avatars
+fn render_grouped_messages(
+    ui: &mut egui::Ui,
+    buffer: &ChannelBuffer,
+    nickname: &str,
+    dark_mode: bool,
+) {
+    let groups = group_messages(&buffer.messages);
+
+    for group in groups {
+        if group.is_system {
+            // Render system message (join/part/etc) compactly
+            render_system_message(ui, group.messages[0], dark_mode);
+        } else {
+            // Render message group with avatar
+            render_message_group(ui, &group, buffer, nickname, dark_mode);
+        }
+    }
+}
+
+/// Render a system message (join, part, quit, etc.)
+fn render_system_message(ui: &mut egui::Ui, msg: &RenderedMessage, dark_mode: bool) {
+    let (icon, color, text) = match &msg.msg_type {
+        MessageType::Join => ("→", theme::msg_colors::JOIN, format!("{} joined the channel", msg.sender)),
+        MessageType::Part => ("←", theme::msg_colors::PART, format!("{} left the channel", msg.sender)),
+        MessageType::Quit => ("✕", theme::msg_colors::PART, format!("{} quit: {}", msg.sender, msg.text)),
+        MessageType::NickChange => ("~", dark::ACCENT_BLUE, format!("{} {}", msg.sender, msg.text)),
+        MessageType::Topic => ("★", theme::msg_colors::TOPIC, msg.text.clone()),
+        _ => ("•", text_colors::muted(dark_mode), msg.text.clone()),
+    };
+
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add_space(52.0); // Align with message content (avatar + margin)
+        ui.label(
+            egui::RichText::new(icon)
+                .size(12.0)
+                .color(color),
+        );
+        ui.label(
+            egui::RichText::new(&text)
+                .size(12.0)
+                .color(text_colors::muted(dark_mode))
+                .italics(),
+        );
+        ui.label(
+            egui::RichText::new(&msg.timestamp)
+                .size(10.0)
+                .color(text_colors::muted(dark_mode)),
+        );
+    });
+    ui.add_space(4.0);
+}
+
+/// Render a group of messages from the same sender
+fn render_message_group(
+    ui: &mut egui::Ui,
+    group: &MessageGroup<'_>,
+    buffer: &ChannelBuffer,
+    nickname: &str,
+    dark_mode: bool,
+) {
+    // Add spacing between groups
+    ui.add_space(spacing::MESSAGE_GROUP_SPACING);
+
+    // Container for the message group with hover highlight
+    let group_rect = ui.available_rect_before_wrap();
+    let response = ui.allocate_rect(
+        egui::Rect::from_min_size(group_rect.min, egui::vec2(group_rect.width(), 0.0)),
+        egui::Sense::hover(),
+    );
+
+    ui.horizontal(|ui| {
+        ui.add_space(12.0);
+
+        // Avatar
+        theme::render_avatar(ui, group.sender, spacing::AVATAR_SIZE);
+
+        ui.add_space(12.0);
+
+        // Message content column
+        ui.vertical(|ui| {
+            // Header: nickname + timestamp
+            ui.horizontal(|ui| {
+                // Nickname with color
+                let nick_color = theme::nick_color(group.sender);
+                ui.label(
+                    egui::RichText::new(group.sender)
+                        .size(14.0)
+                        .strong()
+                        .color(nick_color),
+                );
+
+                ui.add_space(8.0);
+
+                // Timestamp
+                ui.label(
+                    egui::RichText::new(group.first_timestamp)
+                        .size(11.0)
+                        .color(text_colors::muted(dark_mode)),
+                );
+            });
+
+            ui.add_space(2.0);
+
+            // Messages in this group
+            for (i, msg) in group.messages.iter().enumerate() {
+                if i > 0 {
+                    ui.add_space(spacing::MESSAGE_CONTINUATION_SPACING);
+                }
+
+                let mention = msg.text.contains(nickname);
+                render_message_content(ui, msg, buffer, mention, dark_mode);
+            }
+        });
+    });
+
+    // Hover highlight effect
+    if response.hovered() {
+        let highlight_rect = egui::Rect::from_min_size(
+            group_rect.min,
+            egui::vec2(group_rect.width(), ui.min_rect().height()),
+        );
+        ui.painter().rect_filled(
+            highlight_rect,
+            0.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 3),
+        );
+    }
+}
+
+/// Render the content of a single message
+fn render_message_content(
     ui: &mut egui::Ui,
     msg: &RenderedMessage,
     buffer: &ChannelBuffer,
-    _nickname: &str,
     mention: bool,
     dark_mode: bool,
 ) {
-    // Helper for monospaced, aligned timestamps
-    let timestamp_text = |ts: &str| -> egui::RichText {
-        egui::RichText::new(format!("[{}]", ts))
-            .font(FontId::new(12.0, FontFamily::Monospace))
-            .color(crate::ui::theme::msg_colors::TIMESTAMP)
-    };
-
     match &msg.msg_type {
-        MessageType::Join | MessageType::Part | MessageType::Quit | MessageType::NickChange => {
-            ui.horizontal(|ui| {
-                ui.label(timestamp_text(&msg.timestamp));
-                ui.label(
-                    egui::RichText::new(&msg.sender)
-                        .color(crate::ui::theme::msg_colors::JOIN),
-                );
-                ui.label(
-                    egui::RichText::new(&msg.text)
-                        .color(crate::ui::theme::msg_colors::PART)
-                        .italics(),
-                );
-            });
-        }
         MessageType::Action => {
             let action = if msg.text.starts_with("\x01ACTION ") && msg.text.ends_with('\x01') {
                 &msg.text[8..msg.text.len() - 1]
             } else {
                 &msg.text
             };
-            ui.horizontal(|ui| {
-                ui.label(timestamp_text(&msg.timestamp));
-                ui.label(
-                    egui::RichText::new("*").color(crate::ui::theme::msg_colors::ACTION),
-                );
-                ui.label(
-                    egui::RichText::new(&msg.sender)
-                        .color(crate::ui::theme::nick_color(&msg.sender)),
-                );
-                ui.label(
-                    egui::RichText::new(action)
-                        .color(crate::ui::theme::msg_colors::ACTION)
-                        .italics(),
-                );
-            });
-        }
-        MessageType::Topic => {
-            ui.horizontal(|ui| {
-                ui.label(timestamp_text(&msg.timestamp));
-                ui.label(
-                    egui::RichText::new("*").color(crate::ui::theme::msg_colors::TOPIC),
-                );
-                ui.label(
-                    egui::RichText::new(&msg.text).color(crate::ui::theme::msg_colors::TOPIC),
-                );
-            });
+            ui.label(
+                egui::RichText::new(action)
+                    .size(14.0)
+                    .color(theme::msg_colors::ACTION)
+                    .italics(),
+            );
         }
         MessageType::Notice => {
             ui.horizontal(|ui| {
-                ui.label(timestamp_text(&msg.timestamp));
                 ui.label(
-                    egui::RichText::new(&msg.sender)
-                        .color(crate::ui::theme::msg_colors::NOTICE),
+                    egui::RichText::new("[Notice]")
+                        .size(12.0)
+                        .color(theme::msg_colors::NOTICE),
                 );
                 ui.label(
                     egui::RichText::new(&msg.text)
-                        .color(crate::ui::theme::msg_colors::NOTICE_TEXT),
+                        .size(14.0)
+                        .color(theme::msg_colors::NOTICE_TEXT),
                 );
             });
         }
         MessageType::Normal => {
-            let prefix = buffer
-                .users
-                .iter()
-                .find(|u| u.nick == msg.sender)
-                .and_then(|u| u.prefix)
-                .map(|c| c.to_string())
-                .unwrap_or_default();
-            ui.horizontal(|ui| {
-                ui.label(timestamp_text(&msg.timestamp));
-                let nick_display = format!("{}{}:", prefix, msg.sender);
-                ui.label(
-                    egui::RichText::new(nick_display)
-                        .color(crate::ui::theme::nick_color(&msg.sender)),
+            // Highlight background for mentions
+            if mention {
+                let rect = ui.available_rect_before_wrap();
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 24.0)),
+                    4.0,
+                    Color32::from_rgba_unmultiplied(255, 180, 50, 25),
                 );
-                if mention {
-                    render_message_text(
-                        ui,
-                        buffer,
-                        &msg.text,
-                        Some(crate::ui::theme::msg_colors::HIGHLIGHT),
-                        dark_mode,
-                    );
-                } else {
-                    render_message_text(ui, buffer, &msg.text, None, dark_mode);
-                }
-            });
+            }
+
+            render_message_text(ui, buffer, &msg.text, mention, dark_mode);
+        }
+        _ => {
+            ui.label(
+                egui::RichText::new(&msg.text)
+                    .size(14.0)
+                    .color(text_colors::primary(dark_mode)),
+            );
         }
     }
 }
 
-/// Render message text with IRC formatting, URL detection, emote highlighting, and nick coloring.
+/// Render message text with IRC formatting and URL detection
 fn render_message_text(
     ui: &mut egui::Ui,
     buffer: &ChannelBuffer,
     text: &str,
-    accent: Option<Color32>,
-    _dark_mode: bool,
+    mention: bool,
+    dark_mode: bool,
 ) {
     use once_cell::sync::Lazy;
     use regex::Regex;
-    
-    // Compile regexes once at startup - these patterns are constant
-    static URL_RE: Lazy<Regex> = Lazy::new(|| 
-        Regex::new(r"^(https?://|www\.)[^\s]+$")
-            .expect("URL regex pattern is valid")
-    );
-    static EMOTE_RE: Lazy<Regex> = Lazy::new(|| 
-        Regex::new(r"^:([a-zA-Z0-9_]+):$")
-            .expect("Emote regex pattern is valid")
-    );
-    
-    ui.spacing_mut().item_spacing.x = 0.0; // Remove spacing between items
-    
-    // Parse IRC formatting codes and render as styled spans
+
+    static URL_RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r"(https?://[^\s]+)").expect("URL regex pattern is valid")
+    });
+
+    let base_color = if mention {
+        theme::msg_colors::HIGHLIGHT
+    } else {
+        text_colors::primary(dark_mode)
+    };
+
+    // Parse IRC formatting codes
     let spans = parse_irc_formatting(text);
-    
-    for span in spans {
-        if let Some(color) = accent {
-            // If we have an accent color (highlight), override span colors
-            render_span_with_override(ui, buffer, &span, Some(color), &URL_RE, &EMOTE_RE);
-        } else {
-            render_span(ui, buffer, &span, &URL_RE, &EMOTE_RE);
+
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+
+        for span in spans {
+            // Split into words to detect URLs
+            for word in span.text.split_inclusive(char::is_whitespace) {
+                if URL_RE.is_match(word.trim()) {
+                    let url = word.trim();
+                    ui.hyperlink_to(
+                        egui::RichText::new(url).size(14.0).color(dark::ACCENT_BLUE),
+                        url,
+                    );
+                    if word.ends_with(char::is_whitespace) {
+                        ui.label(" ");
+                    }
+                } else if buffer.users.iter().any(|u| u.nick == word.trim().trim_start_matches('@')) {
+                    // Nick mention
+                    let nick = word.trim().trim_start_matches('@');
+                    let nick_col = theme::nick_color(nick);
+                    let mut rich = egui::RichText::new(word).size(14.0).color(nick_col);
+                    if span.bold {
+                        rich = rich.strong();
+                    }
+                    if span.italic {
+                        rich = rich.italics();
+                    }
+                    ui.label(rich);
+                } else {
+                    // Regular text with formatting
+                    let color = span.fg_color.unwrap_or(base_color);
+                    let mut rich = egui::RichText::new(word).size(14.0).color(color);
+                    if span.bold {
+                        rich = rich.strong();
+                    }
+                    if span.italic {
+                        rich = rich.italics();
+                    }
+                    ui.label(rich);
+                }
+            }
         }
-    }
+    });
 }
 
 /// Represents a styled span of text with IRC formatting
@@ -242,25 +427,13 @@ fn render_message_text(
 struct TextSpan {
     text: String,
     fg_color: Option<Color32>,
+    #[allow(dead_code)]
     bg_color: Option<Color32>,
     bold: bool,
     italic: bool,
 }
 
-impl TextSpan {
-    fn new(text: String) -> Self {
-        Self {
-            text,
-            fg_color: None,
-            bg_color: None,
-            bold: false,
-            italic: false,
-        }
-    }
-}
-
 /// Parse IRC formatting codes into styled text spans
-/// Supports: \x02 (bold), \x1D (italic), \x0F (reset), \x03 (color)
 fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
     let mut spans = Vec::new();
     let mut current_text = String::new();
@@ -268,14 +441,13 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
     let mut bg_color: Option<Color32> = None;
     let mut bold = false;
     let mut italic = false;
-    
+
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
-    
+
     while i < chars.len() {
         match chars[i] {
             '\x02' => {
-                // Bold toggle
                 if !current_text.is_empty() {
                     spans.push(TextSpan {
                         text: current_text.clone(),
@@ -290,7 +462,6 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
                 i += 1;
             }
             '\x1D' => {
-                // Italic toggle
                 if !current_text.is_empty() {
                     spans.push(TextSpan {
                         text: current_text.clone(),
@@ -305,7 +476,6 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
                 i += 1;
             }
             '\x0F' => {
-                // Reset all formatting
                 if !current_text.is_empty() {
                     spans.push(TextSpan {
                         text: current_text.clone(),
@@ -323,7 +493,6 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
                 i += 1;
             }
             '\x03' => {
-                // Color code
                 if !current_text.is_empty() {
                     spans.push(TextSpan {
                         text: current_text.clone(),
@@ -334,37 +503,34 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
                     });
                     current_text.clear();
                 }
-                
-                i += 1; // Move past \x03
-                
-                // Check if this is just a reset (no digits follow)
+
+                i += 1;
+
                 if i >= chars.len() || !chars[i].is_ascii_digit() {
                     fg_color = None;
                     bg_color = None;
                     continue;
                 }
-                
-                // Parse foreground color (1 or 2 digits)
+
                 let mut fg_code = String::new();
                 while i < chars.len() && chars[i].is_ascii_digit() && fg_code.len() < 2 {
                     fg_code.push(chars[i]);
                     i += 1;
                 }
-                
+
                 if let Ok(code) = fg_code.parse::<u8>() {
-                    fg_color = Some(crate::ui::theme::mirc_color(code));
+                    fg_color = Some(theme::mirc_color(code));
                 }
-                
-                // Check for optional background color (comma separator)
+
                 if i < chars.len() && chars[i] == ',' {
-                    i += 1; // Skip comma
+                    i += 1;
                     let mut bg_code = String::new();
                     while i < chars.len() && chars[i].is_ascii_digit() && bg_code.len() < 2 {
                         bg_code.push(chars[i]);
                         i += 1;
                     }
                     if let Ok(code) = bg_code.parse::<u8>() {
-                        bg_color = Some(crate::ui::theme::mirc_color(code));
+                        bg_color = Some(theme::mirc_color(code));
                     }
                 }
             }
@@ -374,8 +540,7 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
             }
         }
     }
-    
-    // Push final span if any text remains
+
     if !current_text.is_empty() {
         spans.push(TextSpan {
             text: current_text,
@@ -385,105 +550,7 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
             italic,
         });
     }
-    
+
     spans
-}
-
-/// Render a text span with its formatting
-fn render_span(
-    ui: &mut egui::Ui,
-    buffer: &ChannelBuffer,
-    span: &TextSpan,
-    url_re: &regex::Regex,
-    emote_re: &regex::Regex,
-) {
-    // Split span text into words for URL/emote/nick detection
-    let words: Vec<&str> = span.text.split_whitespace().collect();
-    
-    for (i, &word) in words.iter().enumerate() {
-        let prefix = if i > 0 { " " } else { "" };
-        let stripped = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '@');
-        let stripped_nick = stripped.trim_start_matches('@');
-        
-        // Build RichText with span formatting
-        let mut rich_text = egui::RichText::new(format!("{}{}", prefix, word));
-        
-        if span.bold {
-            rich_text = rich_text.strong();
-        }
-        if span.italic {
-            rich_text = rich_text.italics();
-        }
-        
-        // Handle URLs specially (always hyperlinked)
-        if url_re.is_match(word) {
-            if i > 0 {
-                ui.label(" ");
-            }
-            ui.hyperlink_to(word, word);
-        } else if emote_re.is_match(word) {
-            // Emotes get special color
-            rich_text = rich_text.color(egui::Color32::from_rgb(255, 205, 0));
-            ui.label(rich_text);
-        } else if buffer.users.iter().any(|u| u.nick == stripped_nick) {
-            // Nick mentions get nick color
-            let col = crate::ui::theme::nick_color(stripped_nick);
-            rich_text = rich_text.color(col);
-            ui.label(rich_text);
-        } else {
-            // Apply span colors
-            if let Some(fg) = span.fg_color {
-                rich_text = rich_text.color(fg);
-            }
-            // Background color rendering (egui has limited support, use background_color if available)
-            if let Some(_bg) = span.bg_color {
-                // Note: egui doesn't support text background colors directly in RichText
-                // This would require custom rendering. For now, we skip bg colors.
-            }
-            ui.label(rich_text);
-        }
-    }
-}
-
-/// Render a text span with accent color override (for highlights)
-fn render_span_with_override(
-    ui: &mut egui::Ui,
-    buffer: &ChannelBuffer,
-    span: &TextSpan,
-    override_color: Option<Color32>,
-    url_re: &regex::Regex,
-    emote_re: &regex::Regex,
-) {
-    let words: Vec<&str> = span.text.split_whitespace().collect();
-    
-    for (i, &word) in words.iter().enumerate() {
-        let prefix = if i > 0 { " " } else { "" };
-        
-        let mut rich_text = egui::RichText::new(format!("{}{}", prefix, word));
-        
-        if span.bold {
-            rich_text = rich_text.strong();
-        }
-        if span.italic {
-            rich_text = rich_text.italics();
-        }
-        
-        if url_re.is_match(word) {
-            if i > 0 {
-                ui.label(" ");
-            }
-            ui.hyperlink_to(word, word);
-        } else if emote_re.is_match(word) {
-            if let Some(color) = override_color {
-                rich_text = rich_text.color(color).italics();
-            }
-            ui.label(rich_text);
-        } else {
-            if let Some(color) = override_color {
-                rich_text = rich_text.color(color);
-            }
-            ui.label(rich_text);
-        }
-    }
 }
 
