@@ -204,7 +204,7 @@ fn render_message(
 /// Render message text with IRC formatting, URL detection, emote highlighting, and nick coloring.
 fn render_message_text(
     ui: &mut egui::Ui,
-    _buffer: &ChannelBuffer,
+    buffer: &ChannelBuffer,
     text: &str,
     accent: Option<Color32>,
     _dark_mode: bool,

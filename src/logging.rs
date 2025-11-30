@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::thread;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 

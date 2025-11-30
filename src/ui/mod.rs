@@ -15,4 +15,3 @@ pub mod toolbar;
 
 // Re-export commonly used items
 pub use panels::sort_users;
-pub use theme::{nick_color, prefix_rank};

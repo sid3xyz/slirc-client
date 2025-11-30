@@ -1,6 +1,5 @@
 //! Input validation for IRC protocol compliance
 
-use regex::Regex;
 
 /// Validates an IRC channel name according to RFC 2812
 pub fn validate_channel_name(name: &str) -> Result<(), String> {
