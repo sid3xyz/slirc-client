@@ -10,9 +10,10 @@ use crate::backend::run_backend;
 use crate::buffer::ChannelBuffer;
 use crate::commands;
 use crate::config::{
-    load_nickserv_password, load_settings, save_settings, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
+    load_nickserv_password, load_settings, save_settings, Settings, DEFAULT_SERVER,
 };
 use crate::events;
+use crate::input_state::InputState;
 use crate::protocol::{BackendAction, GuiEvent};
 use crate::state::ClientState;
 use crate::ui;
@@ -34,26 +35,13 @@ pub struct SlircApp {
     pub action_tx: Sender<BackendAction>,
     pub event_rx: Receiver<GuiEvent>,
 
-    // Input state
-    pub channel_input: String,
-    pub message_input: String,
+    // Input state (message composition, history, tab completion)
+    pub input: InputState,
 
-    // Input history
-    pub history: Vec<String>,
-    pub history_pos: Option<usize>,
-    pub history_saved_input: Option<String>,
-
-    // Context menus and floating windows
+    // Context menu state
     pub context_menu_visible: bool,
     pub context_menu_target: Option<String>,
     pub open_windows: HashSet<String>,
-
-    // Tab completion state
-    pub completions: Vec<String>,
-    pub completion_index: Option<usize>,
-    pub completion_prefix: Option<String>,
-    pub completion_target_channel: bool,
-    pub last_input_text: String,
 
     // Theme
     pub theme: String,
@@ -118,21 +106,14 @@ impl SlircApp {
             action_tx,
             event_rx,
 
-            channel_input: DEFAULT_CHANNEL.into(),
-            message_input: String::new(),
+            input: InputState::new(),
 
-            history: Vec::new(),
-            history_pos: None,
-            history_saved_input: None,
-            completions: Vec::new(),
-            completion_index: None,
-            completion_prefix: None,
-            completion_target_channel: false,
-            last_input_text: String::new(),
-            theme: "dark".into(),
             context_menu_visible: false,
             context_menu_target: None,
             open_windows: HashSet::new(),
+
+            theme: "dark".to_string(),
+
             show_channel_list: true,
             show_user_list: true,
             quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
@@ -154,10 +135,10 @@ impl SlircApp {
                 app.nickname_input = s.nick;
             }
             if !s.history.is_empty() {
-                app.history = s.history;
+                app.input.history = s.history;
             }
             if !s.default_channel.is_empty() {
-                app.channel_input = s.default_channel;
+                app.input.channel_input = s.default_channel;
             }
             if !s.theme.is_empty() {
                 app.theme = s.theme;
@@ -205,8 +186,8 @@ impl SlircApp {
         let settings = Settings {
             server: self.server_input.clone(),
             nick: self.nickname_input.clone(),
-            default_channel: self.channel_input.clone(),
-            history: self.history.clone(),
+            default_channel: self.input.channel_input.clone(),
+            history: self.input.history.clone(),
             theme: self.theme.clone(),
             networks: self.state.networks.clone(),
         };
@@ -215,117 +196,13 @@ impl SlircApp {
         }
     }
 
-    fn collect_completions(&self, prefix: &str) -> Vec<String> {
-        let mut matches: Vec<String> = Vec::new();
-        let mut search_prefix = prefix;
-        let mut keep_lead = "";
 
-        // Command completion when prefix starts with /
-        if prefix.starts_with('/') {
-            // List of available IRC commands
-            let commands = vec![
-                "/join", "/j", "/part", "/p", "/msg", "/privmsg", "/me",
-                "/whois", "/w", "/topic", "/t", "/kick", "/k", "/nick",
-                "/quit", "/exit", "/help"
-            ];
-            for cmd in commands {
-                if cmd.starts_with(prefix) {
-                    matches.push(cmd.to_string());
-                }
-            }
-        } else if let Some(stripped) = prefix.strip_prefix('@') {
-            // Keep the '@' in the suggestion, but search without it
-            search_prefix = stripped;
-            keep_lead = "@";
-        }
 
-        if prefix.starts_with('#') || prefix.starts_with('&') {
-            // channel completions
-            for b in &self.state.buffers_order {
-                if b.starts_with(prefix) {
-                    matches.push(b.clone());
-                }
-            }
-        } else if !prefix.starts_with('/') {
-            // user completions from active buffer (skip if completing commands)
-            if let Some(buffer) = self.state.buffers.get(&self.state.active_buffer) {
-                for u in &buffer.users {
-                    if u.nick.starts_with(search_prefix) {
-                        matches.push(format!("{}{}", keep_lead, u.nick.clone()));
-                    }
-                }
-            }
-            // also add channel names for messages starting with '#'
-            for b in &self.state.buffers_order {
-                if b.starts_with(prefix) {
-                    matches.push(b.clone());
-                }
-            }
-        }
-        matches.sort();
-        matches.dedup();
-        matches
-    }
 
-    fn apply_completion(
-        &mut self,
-        completion: &str,
-        last_word_start: usize,
-        _last_word_end: usize,
-    ) {
-        // Replace last token in message_input with completion
-        // If this was the first token in the message, add a trailing ': ' similar to HexChat
-        // Exception: commands starting with '/' just get a space
-        let is_first_token = self.message_input[..last_word_start].trim().is_empty();
-        let is_command = completion.starts_with('/');
-        let suffix = if is_command {
-            " "
-        } else if is_first_token {
-            ": "
-        } else {
-            " "
-        };
-        let before = &self.message_input[..last_word_start];
-        self.message_input = format!("{}{}{}", before, completion, suffix);
-        // reset history navigation when using completions
-        self.history_pos = None;
-        self.history_saved_input = None;
-    }
 
-    fn current_last_word_bounds(&self) -> (usize, usize) {
-        // returns (start_idx, end_idx) of the last word in message_input
-        let idx = self
-            .message_input
-            .rfind(|c: char| c.is_whitespace())
-            .map_or(0, |i| i + 1);
-        (idx, self.message_input.len())
-    }
 
-    fn cycle_completion(&mut self, direction: isize) -> bool {
-        if self.completions.is_empty() {
-            return false;
-        }
-        if let Some(idx) = self.completion_index {
-            let len = self.completions.len();
-            let next_idx = ((idx as isize + direction).rem_euclid(len as isize)) as usize;
-            self.completion_index = Some(next_idx);
-            let comp = self.completions[next_idx].clone();
-            let (start, end) = self.current_last_word_bounds();
-            self.apply_completion(&comp, start, end);
-            true
-        } else {
-            // start cycling
-            self.completion_index = Some(0);
-            if let Some(comp) = self.completions.first() {
-                let comp = comp.clone();
-                let (start, end) = self.current_last_word_bounds();
-                self.apply_completion(&comp, start, end);
-                true
-            } else {
-                false
-            }
-        }
-    }
+
+
 
     pub fn process_events(&mut self) {
         // Collect channel list events separately
@@ -484,7 +361,7 @@ impl eframe::App for SlircApp {
                     ctx,
                     &mut self.server_input,
                     &mut self.nickname_input,
-                    &mut self.channel_input,
+                    &mut self.input.channel_input,
                     self.state.is_connected,
                     &mut self.use_tls,
                     &self.action_tx,
@@ -562,7 +439,7 @@ impl eframe::App for SlircApp {
 
                 input_frame.show(ui, |ui| {
                 let response = ui.add(
-                    egui::TextEdit::multiline(&mut self.message_input)
+                    egui::TextEdit::multiline(&mut self.input.message_input)
                         .desired_rows(1)
                         .desired_width(ui.available_width() - 4.0)
                         .frame(false)
@@ -583,35 +460,35 @@ impl eframe::App for SlircApp {
                 // Input history navigation
                 if response.has_focus()
                     && ui.input(|i| i.key_pressed(egui::Key::ArrowUp))
-                    && !self.history.is_empty()
+                    && !self.input.history.is_empty()
                 {
-                    if self.history_pos.is_none() {
+                    if self.input.history_pos.is_none() {
                         // store current text to restore if user navigates back
-                        self.history_saved_input = Some(self.message_input.clone());
-                        self.history_pos = Some(self.history.len() - 1);
-                    } else if let Some(pos) = self.history_pos {
+                        self.input.history_saved_input = Some(self.input.message_input.clone());
+                        self.input.history_pos = Some(self.input.history.len() - 1);
+                    } else if let Some(pos) = self.input.history_pos {
                         if pos > 0 {
-                            self.history_pos = Some(pos - 1);
+                            self.input.history_pos = Some(pos - 1);
                         }
                     }
-                    if let Some(pos) = self.history_pos {
-                        if let Some(h) = self.history.get(pos) {
-                            self.message_input = h.clone();
+                    if let Some(pos) = self.input.history_pos {
+                        if let Some(h) = self.input.history.get(pos) {
+                            self.input.message_input = h.clone();
                         }
                     }
                 }
                 if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                    if let Some(pos) = self.history_pos {
-                        if pos + 1 < self.history.len() {
-                            self.history_pos = Some(pos + 1);
-                            if let Some(h) = self.history.get(pos + 1) {
-                                self.message_input = h.clone();
+                    if let Some(pos) = self.input.history_pos {
+                        if pos + 1 < self.input.history.len() {
+                            self.input.history_pos = Some(pos + 1);
+                            if let Some(h) = self.input.history.get(pos + 1) {
+                                self.input.message_input = h.clone();
                             }
                         } else {
                             // Exit history navigation
-                            self.history_pos = None;
-                            self.message_input =
-                                self.history_saved_input.take().unwrap_or_default();
+                            self.input.history_pos = None;
+                            self.input.message_input =
+                                self.input.history_saved_input.take().unwrap_or_default();
                         }
                     }
                 }
@@ -622,54 +499,59 @@ impl eframe::App for SlircApp {
                 let shift = ui.input(|i| i.modifiers.shift);
                 if tab_pressed {
                     // compute current prefix (last token)
-                    let (start, end) = self.current_last_word_bounds();
-                    let prefix = self.message_input[start..end].trim();
-                    if self.completions.is_empty() {
+                    let (start, end) = self.input.current_last_word_bounds();
+                    let prefix = self.input.message_input[start..end].trim();
+                    if self.input.completions.is_empty() {
                         // first time: gather completions
-                        self.completions = self.collect_completions(prefix);
-                        self.completion_prefix = Some(prefix.to_string());
-                        self.completion_target_channel =
+                        self.input.completions = self.input.collect_completions(
+                            prefix,
+                            &self.state.buffers_order,
+                            &self.state.active_buffer,
+                            &self.state.buffers
+                        );
+                        self.input.completion_prefix = Some(prefix.to_string());
+                        self.input.completion_target_channel =
                             prefix.starts_with('#') || prefix.starts_with('&');
                     }
-                    if !self.completions.is_empty() {
+                    if !self.input.completions.is_empty() {
                         if shift {
-                            self.cycle_completion(-1);
+                            self.input.cycle_completion(-1);
                         } else {
-                            self.cycle_completion(1);
+                            self.input.cycle_completion(1);
                         }
                     }
                 }
 
                 // Reset completions if the user changed the input text
-                if self.last_input_text != self.message_input && !tab_pressed {
-                    self.completions.clear();
-                    self.completion_index = None;
-                    self.completion_prefix = None;
+                if self.input.last_input_text != self.input.message_input && !tab_pressed {
+                    self.input.completions.clear();
+                    self.input.completion_index = None;
+                    self.input.completion_prefix = None;
                 }
-                self.last_input_text = self.message_input.clone();
+                self.input.last_input_text = self.input.message_input.clone();
 
                 // Esc to cancel input (clear the text field)
                 if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                    self.message_input.clear();
-                    self.history_pos = None;
-                    self.history_saved_input = None;
-                    self.completions.clear();
-                    self.completion_index = None;
-                    self.completion_prefix = None;
+                    self.input.message_input.clear();
+                    self.input.history_pos = None;
+                    self.input.history_saved_input = None;
+                    self.input.completions.clear();
+                    self.input.completion_index = None;
+                    self.input.completion_prefix = None;
                 }
 
-                if enter_pressed && !self.message_input.is_empty() {
+                if enter_pressed && !self.input.message_input.is_empty() {
                     // If it begins with a slash, treat as a command
-                    if self.message_input.starts_with('/') {
+                    if self.input.message_input.starts_with('/') {
                         if commands::handle_user_command(
-                            &self.message_input,
+                            &self.input.message_input,
                             &self.state.active_buffer,
                             &self.state.buffers,
                             &self.action_tx,
                             &mut self.state.system_log,
                             &mut self.nickname_input,
                         ) {
-                            self.history.push(self.message_input.clone());
+                            self.input.history.push(self.input.message_input.clone());
                         }
                     } else {
                         // Normal message
@@ -677,9 +559,9 @@ impl eframe::App for SlircApp {
                             if self.state.active_buffer != "System" {
                                 let _ = self.action_tx.send(BackendAction::SendMessage {
                                     target: self.state.active_buffer.clone(),
-                                    text: self.message_input.clone(),
+                                    text: self.input.message_input.clone(),
                                 });
-                                self.history.push(self.message_input.clone());
+                                self.input.history.push(self.input.message_input.clone());
                             }
                         } else {
                             let ts = Local::now().format("%H:%M:%S").to_string();
@@ -689,9 +571,9 @@ impl eframe::App for SlircApp {
                     }
 
                     // Reset history navigation and input
-                    self.history_pos = None;
-                    self.history_saved_input = None;
-                    self.message_input.clear();
+                    self.input.history_pos = None;
+                    self.input.history_saved_input = None;
+                    self.input.message_input.clear();
                     response.request_focus();
                 }
                 }); // close input_frame
@@ -1077,8 +959,8 @@ impl Drop for SlircApp {
         let settings = Settings {
             server: self.server_input.clone(),
             nick: self.nickname_input.clone(),
-            default_channel: self.channel_input.clone(),
-            history: self.history.clone(),
+            default_channel: self.input.channel_input.clone(),
+            history: self.input.history.clone(),
             theme: self.theme.clone(),
             networks: self.state.networks.clone(),
         };

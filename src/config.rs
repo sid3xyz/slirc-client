@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 // Default configuration
 pub const DEFAULT_SERVER: &str = "irc.slirc.net:6667";
+#[allow(dead_code)]
 pub const DEFAULT_CHANNEL: &str = "#straylight";
 
 /// Represents a saved IRC network with connection settings

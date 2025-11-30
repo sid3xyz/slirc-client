@@ -12,6 +12,7 @@ mod commands;
 mod config;
 mod events;
 mod fonts;
+mod input_state;
 mod logging;
 mod protocol;
 mod state;
@@ -82,19 +83,10 @@ mod tests {
             use_tls: false,
             action_tx,
             event_rx,
-            channel_input: DEFAULT_CHANNEL.into(),
-            message_input: String::new(),
-            history: Vec::new(),
-            history_pos: None,
-            history_saved_input: None,
+            input: crate::input_state::InputState::new(),
             context_menu_visible: false,
             context_menu_target: None,
             open_windows: HashSet::new(),
-            completions: Vec::new(),
-            completion_index: None,
-            completion_prefix: None,
-            completion_target_channel: false,
-            last_input_text: String::new(),
             theme: String::from("dark"),
             show_channel_list: true,
             show_user_list: true,
@@ -230,9 +222,9 @@ mod tests {
         app.state.is_connected = true;
 
         // Set the message input to a whois command and ensure the action is sent
-        app.message_input = String::from("/whois someuser");
+        app.input.message_input = String::from("/whois someuser");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -284,9 +276,9 @@ mod tests {
         app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         // Set the message input to a topic change command and ensure the action is sent
-        app.message_input = String::from("/topic New Topic");
+        app.input.message_input = String::from("/topic New Topic");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -304,9 +296,9 @@ mod tests {
 
         // Now test that /topic with no args displays the topic in system_log
         app.state.buffers.get_mut("#test").unwrap().topic = "Displayed Topic".into();
-        app.message_input = String::from("/topic");
+        app.input.message_input = String::from("/topic");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -323,9 +315,9 @@ mod tests {
         app.state.active_buffer = "#test".into();
         app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
-        app.message_input = String::from("/kick alice Spamming");
+        app.input.message_input = String::from("/kick alice Spamming");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -354,9 +346,9 @@ mod tests {
         app.state.active_buffer = "#test".into();
         app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
-        app.message_input = String::from("/me waves hello");
+        app.input.message_input = String::from("/me waves hello");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -379,9 +371,9 @@ mod tests {
         app.state.is_connected = true;
         app.nickname_input = "oldnick".into();
 
-        app.message_input = String::from("/nick newnick");
+        app.input.message_input = String::from("/nick newnick");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -403,9 +395,9 @@ mod tests {
         let (mut app, _, action_rx) = create_test_app();
         app.state.is_connected = true;
 
-        app.message_input = String::from("/quit Goodbye everyone");
+        app.input.message_input = String::from("/quit Goodbye everyone");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -426,9 +418,9 @@ mod tests {
         let (mut app, _, action_rx) = create_test_app();
         app.state.is_connected = true;
 
-        app.message_input = String::from("/quit");
+        app.input.message_input = String::from("/quit");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -449,9 +441,9 @@ mod tests {
         let (mut app, _, _) = create_test_app();
         let original_log_size = app.state.system_log.len();
 
-        app.message_input = String::from("/help");
+        app.input.message_input = String::from("/help");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -467,9 +459,9 @@ mod tests {
         let (mut app, _, _) = create_test_app();
         let original_log_size = app.state.system_log.len();
 
-        app.message_input = String::from("/foobar");
+        app.input.message_input = String::from("/foobar");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -486,9 +478,9 @@ mod tests {
         let (mut app, _, _) = create_test_app();
         let original_log_size = app.state.system_log.len();
 
-        app.message_input = String::from("/msg alice");
+        app.input.message_input = String::from("/msg alice");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
@@ -506,9 +498,9 @@ mod tests {
         app.state.active_buffer = "#test".into();
         app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
-        app.message_input = String::from("/part");
+        app.input.message_input = String::from("/part");
         assert!(crate::commands::handle_user_command(
-            &app.message_input,
+            &app.input.message_input,
             &app.state.active_buffer,
             &app.state.buffers,
             &app.action_tx,
