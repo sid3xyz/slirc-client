@@ -25,7 +25,39 @@ pub fn process_events(
 ) {
     // Drain all pending events from the backend
     while let Ok(event) = event_rx.try_recv() {
-        match event {
+        process_single_event(
+            event,
+            is_connected,
+            buffers,
+            buffers_order,
+            active_buffer,
+            nickname_input,
+            system_log,
+            expanded_networks,
+            status_messages,
+            server_input,
+            font_fallback,
+            logger,
+        );
+    }
+}
+
+/// Process a single event from the backend.
+pub fn process_single_event(
+    event: GuiEvent,
+    is_connected: &mut bool,
+    buffers: &mut HashMap<String, ChannelBuffer>,
+    buffers_order: &mut Vec<String>,
+    active_buffer: &mut String,
+    nickname_input: &mut String,
+    system_log: &mut Vec<String>,
+    expanded_networks: &mut HashSet<String>,
+    status_messages: &mut Vec<(String, std::time::Instant)>,
+    server_input: &str,
+    font_fallback: &Option<String>,
+    logger: &Option<Logger>,
+) {
+    match event {
             GuiEvent::Connected => {
                 *is_connected = true;
                 let ts = Local::now().format("%H:%M:%S").to_string();
@@ -273,8 +305,12 @@ pub fn process_events(
                 }
                 crate::ui::sort_users(&mut buffer.users[..]);
             }
+
+            // Channel list events are handled in app.rs before calling this function
+            GuiEvent::ChannelListItem { .. } | GuiEvent::ChannelListEnd => {
+                // No-op: filtered by app.rs process_events
+            }
         }
-    }
 }
 
 /// Ensure a buffer exists for the given channel/PM name.

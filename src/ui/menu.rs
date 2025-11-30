@@ -13,6 +13,8 @@ pub fn render_menu_bar(
     show_user_list: &mut bool,
     show_help_dialog: &mut bool,
     network_manager_open: &mut bool,
+    show_channel_browser: &mut bool,
+    channel_list_loading: &mut bool,
     action_tx: &crossbeam_channel::Sender<BackendAction>,
 ) {
     egui::menu::bar(ui, |ui| {
@@ -151,7 +153,8 @@ pub fn render_menu_bar(
                     .on_hover_text("List all channels on server")
                     .clicked()
                 {
-                    // TODO: Implement channel list dialog
+                    let _ = action_tx.send(BackendAction::List);
+                    *channel_list_loading = true;
                     ui.close_menu();
                 }
                 add_shortcut_text(ui, "Ctrl+L");

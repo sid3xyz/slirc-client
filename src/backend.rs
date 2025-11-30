@@ -306,6 +306,21 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                         let _ = event_tx.send(GuiEvent::Disconnected("User quit".into()));
                     }
 
+                    BackendAction::List => {
+                        if let Some(ref mut t) = transport {
+                            if let Ok(list_msg) = Message::new(None, "LIST", vec![]) {
+                                if let Err(e) = t.write_message(&list_msg).await {
+                                    let _ = event_tx.send(GuiEvent::Error(format!(
+                                        "Failed to request channel list: {}",
+                                        e
+                                    )));
+                                }
+                            }
+                        } else {
+                            let _ = event_tx.send(GuiEvent::Error("Not connected".into()));
+                        }
+                    }
+
                     BackendAction::SendMessage { target, text } => {
                         if let Some(ref mut t) = transport {
                             let privmsg = Message::privmsg(&target, &text);
@@ -375,6 +390,25 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                     }
                                     let _ = event_tx.send(GuiEvent::Names { channel, names });
                                 }
+                            }
+
+                            // RPL_LIST (322) - channel list item
+                            Command::Response(code, args) if code.code() == 322 => {
+                                if args.len() >= 4 {
+                                    let channel = args[1].clone();
+                                    let user_count = args[2].parse::<usize>().unwrap_or(0);
+                                    let topic = args[3].clone();
+                                    let _ = event_tx.send(GuiEvent::ChannelListItem {
+                                        channel,
+                                        user_count,
+                                        topic,
+                                    });
+                                }
+                            }
+
+                            // RPL_LISTEND (323) - end of channel list
+                            Command::Response(code, _) if code.code() == 323 => {
+                                let _ = event_tx.send(GuiEvent::ChannelListEnd);
                             }
 
                             // RPL_MOTD (372) and RPL_MOTDSTART (375)

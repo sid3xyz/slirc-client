@@ -180,8 +180,12 @@ pub fn handle_user_command(
                 Some(reason)
             }));
         }
+        "list" => {
+            let _ = action_tx.send(BackendAction::List);
+            system_log.push("Requesting channel list from server...".into());
+        }
         "help" => {
-            system_log.push("Supported commands: /join, /part, /msg, /me, /nick, /quit, /whois, /topic, /kick".into());
+            system_log.push("Supported commands: /join, /part, /msg, /me, /nick, /quit, /whois, /topic, /kick, /list".into());
         }
         unknown => {
             system_log.push(format!("Unknown command: /{}", unknown));

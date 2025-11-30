@@ -112,6 +112,10 @@ mod tests {
             status_messages: Vec::new(),
             logger: None, // No logger in tests
             quick_switcher: crate::ui::quick_switcher::QuickSwitcher::default(),
+            show_channel_browser: false,
+            channel_list: Vec::new(),
+            channel_list_filter: String::new(),
+            channel_list_loading: false,
         };
         (app, event_tx, action_rx)
     }

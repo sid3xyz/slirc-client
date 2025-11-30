@@ -74,6 +74,11 @@ pub struct SlircApp {
     pub logger: Option<Logger>,
     // Quick switcher (Ctrl+K)
     pub quick_switcher: ui::quick_switcher::QuickSwitcher,
+    // Channel browser
+    pub show_channel_browser: bool,
+    pub channel_list: Vec<ui::dialogs::ChannelListItem>,
+    pub channel_list_filter: String,
+    pub channel_list_loading: bool,
 }
 
 impl SlircApp {
@@ -243,6 +248,10 @@ impl SlircApp {
             status_messages: Vec::new(),
             logger: Logger::new().ok(), // Initialize logger, silently fail if can't create
             quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
+            show_channel_browser: false,
+            channel_list: Vec::new(),
+            channel_list_filter: String::new(),
+            channel_list_loading: false,
         };
 
         // Create the System buffer
@@ -425,8 +434,41 @@ impl SlircApp {
     }
 
     pub fn process_events(&mut self) {
-        events::process_events(
-            &self.event_rx,
+        // Collect channel list events separately
+        let mut regular_events = Vec::new();
+        
+        while let Ok(event) = self.event_rx.try_recv() {
+            match event {
+                GuiEvent::ChannelListItem {
+                    channel,
+                    user_count,
+                    topic,
+                } => {
+                    self.channel_list.push(ui::dialogs::ChannelListItem {
+                        channel,
+                        user_count,
+                        topic,
+                    });
+                }
+                GuiEvent::ChannelListEnd => {
+                    self.channel_list_loading = false;
+                    self.show_channel_browser = true; // Auto-show when ready
+                }
+                other => {
+                    regular_events.push(other);
+                }
+            }
+        }
+        
+        // Process regular events
+        for event in regular_events {
+            self.process_single_event(event);
+        }
+    }
+    
+    fn process_single_event(&mut self, event: GuiEvent) {
+        events::process_single_event(
+            event,
             &mut self.is_connected,
             &mut self.buffers,
             &mut self.buffers_order,
@@ -522,6 +564,8 @@ impl eframe::App for SlircApp {
                     &mut self.show_user_list,
                     &mut self.show_help_dialog,
                     &mut self.network_manager_open,
+                    &mut self.show_channel_browser,
+                    &mut self.channel_list_loading,
                     &self.action_tx,
                 );
             });
@@ -1254,6 +1298,7 @@ impl eframe::App for SlircApp {
                     ui.label("Slash commands:");
                     ui.label("  /join <#channel> - join a channel");
                     ui.label("  /part [#channel] - leave a channel");
+                    ui.label("  /list - browse available channels");
                     ui.label("  /nick <nick> - change nick");
                     ui.label("  /me <text> - send CTCP ACTION");
                     ui.label("  /whois <nick> - request WHOIS");
@@ -1299,6 +1344,18 @@ impl eframe::App for SlircApp {
                 buffer.clear_unread();
                 buffer.has_highlight = false;
             }
+        }
+        
+        // Channel browser dialog
+        if let Some(channel) = ui::dialogs::render_channel_browser(
+            ctx,
+            &mut self.show_channel_browser,
+            &self.channel_list,
+            &mut self.channel_list_filter,
+            self.channel_list_loading,
+        ) {
+            // User wants to join this channel
+            let _ = self.action_tx.send(BackendAction::Join(channel));
         }
     }
 }

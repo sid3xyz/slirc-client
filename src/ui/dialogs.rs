@@ -428,3 +428,108 @@ pub fn render_status_toasts(
             });
         });
 }
+
+/// Channel list item from server
+#[derive(Clone, Debug)]
+pub struct ChannelListItem {
+    pub channel: String,
+    pub user_count: usize,
+    pub topic: String,
+}
+
+/// Render the channel browser dialog
+/// Returns Some(channel) if user wants to join a channel
+pub fn render_channel_browser(
+    ctx: &egui::Context,
+    show_browser: &mut bool,
+    channel_list: &[ChannelListItem],
+    filter: &mut String,
+    is_loading: bool,
+) -> Option<String> {
+    if !*show_browser {
+        return None;
+    }
+
+    let mut join_channel: Option<String> = None;
+    let mut open = true;
+
+    egui::Window::new("Channel Browser")
+        .open(&mut open)
+        .resizable(true)
+        .default_width(700.0)
+        .default_height(500.0)
+        .show(ctx, |ui| {
+            ui.heading("Available Channels");
+            ui.separator();
+
+            // Filter input
+            ui.horizontal(|ui| {
+                ui.label("Filter:");
+                ui.text_edit_singleline(filter);
+                if ui.button("Clear").clicked() {
+                    filter.clear();
+                }
+            });
+            ui.add_space(8.0);
+
+            if is_loading {
+                ui.spinner();
+                ui.label("Loading channel list...");
+            } else if channel_list.is_empty() {
+                ui.label("No channels available. Use /list to refresh.");
+            } else {
+                // Filter channels
+                let filter_lower = filter.to_lowercase();
+                let filtered: Vec<&ChannelListItem> = if filter.is_empty() {
+                    channel_list.iter().collect()
+                } else {
+                    channel_list
+                        .iter()
+                        .filter(|item| {
+                            item.channel.to_lowercase().contains(&filter_lower)
+                                || item.topic.to_lowercase().contains(&filter_lower)
+                        })
+                        .collect()
+                };
+
+                ui.label(format!("Showing {} of {} channels", filtered.len(), channel_list.len()));
+                ui.separator();
+
+                // Channel list table
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        egui::Grid::new("channel_list_grid")
+                            .striped(true)
+                            .spacing([10.0, 4.0])
+                            .show(ui, |ui| {
+                                // Header
+                                ui.label(egui::RichText::new("Channel").strong());
+                                ui.label(egui::RichText::new("Users").strong());
+                                ui.label(egui::RichText::new("Topic").strong());
+                                ui.label("");
+                                ui.end_row();
+
+                                // Rows
+                                for item in filtered.iter().take(200) {
+                                    // Limit to 200 for performance
+                                    ui.label(&item.channel);
+                                    ui.label(format!("{}", item.user_count));
+                                    ui.label(&item.topic);
+                                    if ui.button("Join").clicked() {
+                                        join_channel = Some(item.channel.clone());
+                                        *show_browser = false;
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            }
+        });
+
+    if !open {
+        *show_browser = false;
+    }
+
+    join_channel
+}

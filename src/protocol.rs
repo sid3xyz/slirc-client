@@ -42,6 +42,8 @@ pub enum BackendAction {
         nick: String,
         mode: String,
     },
+    /// Request channel list from server
+    List,
 }
 
 /// Events sent from the Backend to the UI
@@ -98,6 +100,14 @@ pub enum GuiEvent {
     },
     /// Notification that the nick changed locally
     NickChanged { old: String, new: String },
+    /// Channel list entry from server (RPL_LIST 322)
+    ChannelListItem {
+        channel: String,
+        user_count: usize,
+        topic: String,
+    },
+    /// End of channel list (RPL_LISTEND 323)
+    ChannelListEnd,
 }
 
 /// Represents a nick and any prefix/mode that is associated with it in a
