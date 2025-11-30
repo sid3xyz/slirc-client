@@ -3,7 +3,7 @@
 use chrono::Local;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 
-use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
+use crate::buffer::{MessageType, RenderedMessage};
 use crate::protocol::{GuiEvent, UserInfo};
 use crate::state::ClientState;
 
@@ -96,7 +96,9 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             let mention = text.contains(&state.our_nick);
             let is_own_msg = sender == state.our_nick;
             let active = state.active_buffer.clone();
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &buffer_name);
+            
+            // Create buffer first
+            let buffer = state.ensure_buffer(&buffer_name);
             let is_active = active == buffer_name;
             // Use slirc_proto's CTCP parser to detect ACTION messages
             let msg_type = if let Some(ctcp) = Ctcp::parse(&text) {
@@ -115,17 +117,6 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
                 .with_type(msg_type);
             buffer.add_message(msg, is_active || is_own_msg, mention);
 
-            // Log to file (non-blocking)
-            if let Some(ref logger) = state.logger {
-                logger.log(crate::logging::LogEntry {
-                    network: state.server_name.clone(),
-                    channel: buffer_name.clone(),
-                    timestamp: ts.clone(),
-                    nick: sender.clone(),
-                    message: text.clone(),
-                });
-            }
-
             // Keep user list updated if a new nick speaks
             if (buffer_name.starts_with('#') || buffer_name.starts_with('&'))
                 && !buffer.users.iter().any(|u| u.nick == sender)
@@ -136,6 +127,18 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
                 });
                 crate::ui::sort_users(&mut buffer.users[..]);
             }
+
+            // Log to file (non-blocking) - done after buffer operations to avoid borrow conflicts
+            if let Some(ref logger) = state.logger {
+                logger.log(crate::logging::LogEntry {
+                    network: state.server_name.clone(),
+                    channel: buffer_name.clone(),
+                    timestamp: ts.clone(),
+                    nick: sender.clone(),
+                    message: text.clone(),
+                });
+            }
+            
             // Unread/highlight handled by ChannelBuffer::add_message
             None
         }
@@ -144,7 +147,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             let ts = Local::now().format("%H:%M:%S").to_string();
             state.system_log.push(format!("[{}] ✓ Joined {}", ts, channel));
             state.status_messages.push((format!("Joined {}", channel), std::time::Instant::now()));
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &channel);
+            let buffer = state.ensure_buffer(&channel);
             buffer.clear_unread();
             buffer.has_highlight = false;
             state.active_buffer = channel;
@@ -165,7 +168,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
 
         GuiEvent::UserJoined { channel, nick } => {
             let is_active = state.active_buffer == channel;
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &channel);
+            let buffer = state.ensure_buffer(&channel);
             let ts = Local::now().format("%H:%M:%S").to_string();
             let join_msg =
                 RenderedMessage::new(ts.clone(), "→".into(), format!("{} joined", nick))
@@ -188,7 +191,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             message,
         } => {
             let is_active = state.active_buffer == channel;
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &channel);
+            let buffer = state.ensure_buffer(&channel);
             let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
             let ts = Local::now().format("%H:%M:%S").to_string();
             let part_msg = RenderedMessage::new(
@@ -239,7 +242,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
 
         GuiEvent::Topic { channel, topic } => {
             let active = state.active_buffer.clone();
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &channel);
+            let buffer = state.ensure_buffer(&channel);
             buffer.topic = topic.clone();
             let ts = Local::now().format("%H:%M:%S").to_string();
             let topic_msg =
@@ -251,7 +254,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
         }
 
         GuiEvent::Names { channel, names } => {
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &channel);
+            let buffer = state.ensure_buffer(&channel);
             buffer.users = names;
             crate::ui::sort_users(&mut buffer.users[..]);
             None
@@ -263,7 +266,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             prefix,
             added,
         } => {
-            let buffer = ensure_buffer(&mut state.buffers, &mut state.buffers_order, &channel);
+            let buffer = state.ensure_buffer(&channel);
             // Find the user and update the prefix; if the user isn't present,
             // add them (some servers may send MODE before a NAMES refresh).
             if let Some(user) = buffer.users.iter_mut().find(|u| u.nick == nick) {
@@ -312,23 +315,6 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             None
         }
     }
-}
-
-/// Ensure a buffer exists for the given channel/PM name.
-fn ensure_buffer<'a>(
-    buffers: &'a mut std::collections::HashMap<String, ChannelBuffer>,
-    buffers_order: &mut Vec<String>,
-    name: &str,
-) -> &'a mut ChannelBuffer {
-    if !buffers.contains_key(name) {
-        buffers.insert(name.to_string(), ChannelBuffer::new());
-        // keep insertion order
-        if !buffers_order.contains(&name.to_string()) {
-            buffers_order.push(name.to_string());
-        }
-    }
-    // Safe unwrap: we just ensured the key exists above
-    buffers.get_mut(name).expect("Buffer should exist after insertion")
 }
 
 /// Clean MOTD line formatting (strips common prefixes).

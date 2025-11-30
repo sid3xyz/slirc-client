@@ -75,7 +75,6 @@ impl ClientState {
     }
 
     /// Get a mutable reference to a buffer, creating it if needed.
-    #[allow(dead_code)]
     pub fn ensure_buffer(&mut self, name: &str) -> &mut ChannelBuffer {
         if !self.buffers.contains_key(name) {
             self.buffers.insert(name.to_string(), ChannelBuffer::new());

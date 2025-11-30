@@ -39,43 +39,12 @@ impl Default for Network {
     }
 }
 
-/// Save a NickServ password to the system keyring
-/// Save a NickServ password to the system keyring (for future NickServ support)
-#[allow(dead_code)]
-pub fn save_nickserv_password(network_name: &str, password: &str) -> Result<(), String> {
-    use keyring::Entry;
-    
-    let entry = Entry::new("slirc-client", network_name)
-        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
-    
-    entry.set_password(password)
-        .map_err(|e| format!("Failed to save password: {}", e))?;
-    
-    Ok(())
-}
-
-/// Load a NickServ password from the system keyring (for future NickServ support)
-#[allow(dead_code)]
+/// Load a NickServ password from the system keyring (for future NickServ support).
 pub fn load_nickserv_password(network_name: &str) -> Option<String> {
     use keyring::Entry;
     
     let entry = Entry::new("slirc-client", network_name).ok()?;
     entry.get_password().ok()
-}
-
-/// Delete a NickServ password from the system keyring
-/// Delete a NickServ password from the system keyring (for future NickServ support)
-#[allow(dead_code)]
-pub fn delete_nickserv_password(network_name: &str) -> Result<(), String> {
-    use keyring::Entry;
-    
-    let entry = Entry::new("slirc-client", network_name)
-        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
-    
-    entry.delete_password()
-        .map_err(|e| format!("Failed to delete password: {}", e))?;
-    
-    Ok(())
 }
 
 #[derive(Serialize, Deserialize, Default)]

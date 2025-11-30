@@ -165,31 +165,6 @@ use crate::protocol::{BackendAction, GuiEvent};
     }
 
     #[test]
-    fn test_password_storage_interface() {
-        use crate::config::{save_nickserv_password, load_nickserv_password, delete_nickserv_password};
-
-        let test_network = "test_network_for_slirc";
-        let test_password = "test_password_123";
-
-        // Save password
-        match save_nickserv_password(test_network, test_password) {
-            Ok(_) => {
-                // Load password
-                if let Some(loaded) = load_nickserv_password(test_network) {
-                    assert_eq!(loaded, test_password);
-                }
-
-                // Clean up
-                let _ = delete_nickserv_password(test_network);
-            }
-            Err(_) => {
-                // Keyring might not be available in test environment, that's okay
-                println!("Keyring not available in test environment");
-            }
-        }
-    }
-
-    #[test]
     fn test_buffer_state_management() {
         use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
         use crate::protocol::UserInfo;
