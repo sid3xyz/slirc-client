@@ -4,7 +4,7 @@ A modern, native IRC client built with [egui](https://github.com/emilk/egui) and
 
 ![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)
 ![License](https://img.shields.io/badge/license-Unlicense-blue)
-![Tests](https://img.shields.io/badge/tests-69%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-75%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-21.23%25-yellow)
 
 ## Features
@@ -26,14 +26,17 @@ A modern, native IRC client built with [egui](https://github.com/emilk/egui) and
 - **Mention Highlights** - Messages mentioning your nick are highlighted
 - **Input Validation** - RFC 2812 compliant channel and nickname validation
 - **Command Completion** - Full IRC command support (/join, /part, /msg, /me, /nick, etc.)
+- **🎨 Rich Text Formatting** - Full mIRC color codes, bold, italic rendering
+- **💾 Chat Logging** - Automatic message persistence to XDG_DATA_HOME/slirc-client/logs
 
 ### Technical Excellence
-- **69 Passing Tests** - Comprehensive test coverage (21.23% overall)
+- **75 Passing Tests** - Comprehensive test coverage with formatting & logging tests
   - Events: 93.4% coverage
   - Commands: 71.7% coverage
   - Validation: 96.3% coverage
+  - IRC Formatting: Full coverage of mIRC codes
 - **Zero Unwraps** - Production code uses proper error handling
-- **Integration Tested** - TLS, network manager, and protocol handling
+- **Integration Tested** - TLS, network manager, protocol handling, and formatting parser
 - **Modern Rust** - Clean, idiomatic code with async/await
 
 ## Screenshots
@@ -75,11 +78,17 @@ SLIRC Client uses a **dual-thread architecture** to bridge the async network lay
 ### Communication Protocol
 
 **BackendAction** (UI → Backend):
-- `Connect { server, port, nickname, username, realname }` - Initiate connection
+- `Connect { server, port, nickname, username, realname, use_tls }` - Initiate connection
 - `Disconnect` - Close connection gracefully
 - `Join(channel)` - Join an IRC channel
-- `Part(channel)` - Leave an IRC channel
+- `Part { channel, message }` - Leave an IRC channel with optional message
+- `Nick(newnick)` - Change nickname
+- `Quit(message)` - Quit server with optional message
 - `SendMessage { target, text }` - Send PRIVMSG to channel/user
+- `SetTopic { channel, topic }` - Set channel topic
+- `Whois(nick)` - Request WHOIS information
+- `Kick { channel, nick, reason }` - Kick user from channel
+- `SetUserMode { channel, nick, mode }` - Set user mode (+o, -o, etc.)
 
 **GuiEvent** (Backend → UI):
 - `Connected` - Registration complete (RPL_WELCOME received)
@@ -90,10 +99,13 @@ SLIRC Client uses a **dual-thread architecture** to bridge the async network lay
 - `PartedChannel(channel)` - Left a channel
 - `UserJoined { channel, nick }` - Another user joined
 - `UserParted { channel, nick, message }` - Another user left
+- `UserQuit { nick, message }` - User quit from server (affects all channels)
+- `UserMode { channel, nick, prefix, added }` - User mode changed (op, voice, etc.)
+- `NickChanged { old, new }` - Local or remote nick change
 - `RawMessage(line)` - Raw IRC protocol line (for System log)
 - `Motd(line)` - Message of the Day line
 - `Topic { channel, topic }` - Channel topic received
-- `Names { channel, names }` - Channel user list received
+- `Names { channel, names }` - Channel user list received (Vec<UserInfo>)
 
 ### Why This Architecture?
 
@@ -116,8 +128,16 @@ This separation ensures:
 | `crossbeam-channel` | Lock-free channels for thread communication |
 | `tokio-rustls` | TLS/SSL encryption support |
 | `rustls` | Modern TLS implementation |
+| `rustls-native-certs` | System root certificate store |
+| `webpki-roots` | Mozilla root certificates |
 | `keyring` | Secure password storage in system keyring |
 | `serde` | Configuration serialization |
+| `serde_json` | JSON configuration format |
+| `chrono` | Timestamp formatting |
+| `regex` | Message parsing and validation |
+| `once_cell` | Static initialization |
+| `directories` | Cross-platform config directory paths |
+| `tokio-util` | Codec utilities for framing |
 
 ## Building
 
@@ -279,17 +299,30 @@ slirc-client/
 | `NOTICE` | Routes to appropriate buffer (sender prefixed with `-`) |
 | `JOIN` | Creates buffer or adds user to list |
 | `PART` | Removes buffer or user from list |
-| `QUIT` | Logged (user tracking TBD) |
+| `QUIT` | Removes user from all channel user lists |
+| `NICK` | Updates nickname in all buffers and user lists |
+| `MODE` | Updates user prefixes in channel user lists |
 | `ERROR` | Displays error in System buffer |
+
+**Note**: User tracking for MODE and advanced channel modes is fully implemented. Nick changes propagate across all buffers.
 
 ## Completed Features (November 2025)
 
+### Phase 1 & 2 (Quality & Security)
 - ✅ **TLS/SSL Support** - Full TLS 1.3 with certificate validation
 - ✅ **Network Manager** - Save/load multiple network configurations
 - ✅ **Secure Password Storage** - System keyring integration
 - ✅ **Input Validation** - RFC 2812 compliant validation
-- ✅ **Comprehensive Testing** - 69 tests with 21% coverage
+- ✅ **Comprehensive Testing** - 75 tests with extensive coverage
 - ✅ **Configuration Persistence** - JSON-based settings storage
+
+### Phase 3 (Rich Text & Logging) - November 30, 2025
+- ✅ **IRC Text Formatting** - Full mIRC color codes (0-15), bold (\x02), italic (\x1D), reset (\x0F)
+- ✅ **State Machine Parser** - Proper handling of complex formatting combinations
+- ✅ **Chat Logging** - Non-blocking file-based persistence to `$XDG_DATA_HOME/slirc-client/logs`
+- ✅ **Log Organization** - Structured as `network/channel/YYYY-MM-DD.log`
+- ✅ **Background I/O** - Separate thread for logging ensures UI remains responsive
+- ✅ **Enhanced Tests** - 6 new tests covering formatting edge cases and logging
 
 ## Roadmap
 

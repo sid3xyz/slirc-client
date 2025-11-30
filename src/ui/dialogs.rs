@@ -209,6 +209,7 @@ pub fn render_network_manager(
                                         username: network.nick.clone(),
                                         realname: format!("SLIRC User ({})", network.nick),
                                         use_tls: network.use_tls,
+                                        auto_reconnect: network.auto_reconnect,
                                     });
 
                                     // Auto-join favorite channels
@@ -257,6 +258,7 @@ pub fn render_network_manager(
                             favorite_channels: vec!["#slirc".to_string()],
                             nickserv_password: None,
                             use_tls: true,
+                            auto_reconnect: true,
                         });
                         save_networks_fn(networks);
                     }
@@ -269,6 +271,7 @@ pub fn render_network_manager(
                             favorite_channels: vec![],
                             nickserv_password: None,
                             use_tls: true,
+                            auto_reconnect: true,
                         });
                         save_networks_fn(networks);
                     }
@@ -281,6 +284,7 @@ pub fn render_network_manager(
                             favorite_channels: vec![],
                             nickserv_password: None,
                             use_tls: true,
+                            auto_reconnect: true,
                         });
                         save_networks_fn(networks);
                     }
@@ -293,6 +297,7 @@ pub fn render_network_manager(
                             favorite_channels: vec![],
                             nickserv_password: None,
                             use_tls: true,
+                            auto_reconnect: true,
                         });
                         save_networks_fn(networks);
                     }
@@ -375,6 +380,7 @@ pub fn render_network_manager(
                                 Some(network_form.nickserv_password.clone())
                             },
                             use_tls: network_form.use_tls,
+                            auto_reconnect: true, // Enable auto-reconnect by default
                         };
 
                         if let Some(idx) = *editing_network {

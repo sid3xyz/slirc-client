@@ -12,6 +12,7 @@ use crate::config::{
     load_settings, save_settings, Network, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
 };
 use crate::events;
+use crate::logging::Logger;
 use crate::protocol::{BackendAction, GuiEvent};
 use crate::ui;
 use crate::ui::dialogs::NetworkForm;
@@ -69,6 +70,8 @@ pub struct SlircApp {
     pub nick_change_input: String,
     // Status messages (toasts)
     pub status_messages: Vec<(String, std::time::Instant)>,
+    // Chat logger
+    pub logger: Option<Logger>,
 }
 
 impl SlircApp {
@@ -136,12 +139,12 @@ impl SlircApp {
             }
         }
 
-        // Set better font sizes for IRC (slightly larger for readability)
+        // Set professional font sizes and improved spacing
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
             (
                 egui::TextStyle::Small,
-                egui::FontId::new(10.0, egui::FontFamily::Proportional),
+                egui::FontId::new(11.0, egui::FontFamily::Proportional),
             ),
             (
                 egui::TextStyle::Body,
@@ -157,10 +160,14 @@ impl SlircApp {
             ),
             (
                 egui::TextStyle::Heading,
-                egui::FontId::new(16.0, egui::FontFamily::Proportional),
+                egui::FontId::new(15.0, egui::FontFamily::Proportional),
             ),
         ]
         .into();
+        // Increase global spacing for breathing room
+        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        style.spacing.window_margin = egui::Margin::same(10);
+        style.spacing.button_padding = egui::vec2(8.0, 4.0);
         cc.egui_ctx.set_style(style);
 
         let mut app = Self {
@@ -204,6 +211,7 @@ impl SlircApp {
             nick_change_dialog_open: false,
             nick_change_input: String::new(),
             status_messages: Vec::new(),
+            logger: Logger::new().ok(), // Initialize logger, silently fail if can't create
         };
 
         // Create the System buffer
@@ -242,6 +250,7 @@ impl SlircApp {
                             username: network.nick.clone(),
                             realname: format!("SLIRC User ({})", network.nick),
                             use_tls: network.use_tls,
+                            auto_reconnect: network.auto_reconnect,
                         });
 
                         // Auto-join favorite channels
@@ -276,11 +285,26 @@ impl SlircApp {
         let mut matches: Vec<String> = Vec::new();
         let mut search_prefix = prefix;
         let mut keep_lead = "";
-        if let Some(stripped) = prefix.strip_prefix('@') {
+        
+        // Command completion when prefix starts with /
+        if prefix.starts_with('/') {
+            // List of available IRC commands
+            let commands = vec![
+                "/join", "/j", "/part", "/p", "/msg", "/privmsg", "/me", 
+                "/whois", "/w", "/topic", "/t", "/kick", "/k", "/nick", 
+                "/quit", "/exit", "/help"
+            ];
+            for cmd in commands {
+                if cmd.starts_with(prefix) {
+                    matches.push(cmd.to_string());
+                }
+            }
+        } else if let Some(stripped) = prefix.strip_prefix('@') {
             // Keep the '@' in the suggestion, but search without it
             search_prefix = stripped;
             keep_lead = "@";
         }
+        
         if prefix.starts_with('#') || prefix.starts_with('&') {
             // channel completions
             for b in &self.buffers_order {
@@ -288,8 +312,8 @@ impl SlircApp {
                     matches.push(b.clone());
                 }
             }
-        } else {
-            // user completions from active buffer
+        } else if !prefix.starts_with('/') {
+            // user completions from active buffer (skip if completing commands)
             if let Some(buffer) = self.buffers.get(&self.active_buffer) {
                 for u in &buffer.users {
                     if u.nick.starts_with(search_prefix) {
@@ -317,8 +341,16 @@ impl SlircApp {
     ) {
         // Replace last token in message_input with completion
         // If this was the first token in the message, add a trailing ': ' similar to HexChat
+        // Exception: commands starting with '/' just get a space
         let is_first_token = self.message_input[..last_word_start].trim().is_empty();
-        let suffix = if is_first_token { ": " } else { " " };
+        let is_command = completion.starts_with('/');
+        let suffix = if is_command {
+            " "
+        } else if is_first_token {
+            ": "
+        } else {
+            " "
+        };
         let before = &self.message_input[..last_word_start];
         self.message_input = format!("{}{}{}", before, completion, suffix);
         // reset history navigation when using completions
@@ -374,6 +406,7 @@ impl SlircApp {
             &mut self.status_messages,
             &self.server_input,
             &self.font_fallback,
+            &self.logger,
         );
     }
 }
@@ -487,14 +520,40 @@ impl eframe::App for SlircApp {
             }
         }
 
-        // Bottom panel: Message input
-        egui::TopBottomPanel::bottom("input_panel").show(ctx, |ui| {
+        // Bottom panel: Message input with polished styling
+        let dark_mode = ctx.style().visuals.dark_mode;
+        let input_bg = ui::theme::panel_colors::input_bg(dark_mode);
+        let _focus_border = ui::theme::panel_colors::focus_border(dark_mode);
+
+        egui::TopBottomPanel::bottom("input_panel")
+            .frame(
+                egui::Frame::new()
+                    .fill(input_bg)
+                    .inner_margin(egui::Margin::symmetric(12, 10))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        ui::theme::panel_colors::separator(dark_mode),
+                    )),
+            )
+            .show(ctx, |ui| {
             ui.horizontal(|ui| {
+                // Styled input frame with rounding and focus indication
+                let input_frame = egui::Frame::new()
+                    .fill(if dark_mode {
+                        egui::Color32::from_rgb(45, 45, 52)
+                    } else {
+                        egui::Color32::WHITE
+                    })
+                    .corner_radius(egui::CornerRadius::same(ui::theme::spacing::INPUT_ROUNDING))
+                    .inner_margin(egui::Margin::symmetric(10, 8));
+
+                input_frame.show(ui, |ui| {
                 let response = ui.add(
                     egui::TextEdit::multiline(&mut self.message_input)
                         .desired_rows(1)
-                        .desired_width(ui.available_width())
-                        .hint_text("Type a message... (Enter to send, Shift+Enter for newline)"),
+                        .desired_width(ui.available_width() - 4.0)
+                        .frame(false)
+                        .hint_text("Type a message... (Enter to send)"),
                 );
 
                 // Detect Enter (without Shift) to send a message. Shift+Enter inserts newline in the
@@ -616,11 +675,19 @@ impl eframe::App for SlircApp {
                     self.message_input.clear();
                     response.request_focus();
                 }
+                }); // close input_frame
             });
         });
 
-        // Central panel: Messages with dedicated topic bar
-        egui::CentralPanel::default().show(ctx, |ui| {
+        // Central panel: Messages with dedicated topic bar and styled background
+        let chat_bg = ui::theme::panel_colors::chat_bg(dark_mode);
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(chat_bg)
+                    .inner_margin(egui::Margin::same(ui::theme::spacing::PANEL_MARGIN)),
+            )
+            .show(ctx, |ui| {
             ui::messages::render_messages(
                 ctx,
                 ui,
@@ -914,6 +981,7 @@ impl eframe::App for SlircApp {
                                                 username: network.nick.clone(),
                                                 realname: format!("SLIRC User ({})", network.nick),
                                                 use_tls: network.use_tls,
+                                                auto_reconnect: network.auto_reconnect,
                                             });
 
                                             // Auto-join favorite channels after a brief delay
@@ -1043,6 +1111,7 @@ impl eframe::App for SlircApp {
                                         Some(self.network_form.nickserv_password.clone())
                                     },
                                     use_tls: self.network_form.use_tls,
+                                    auto_reconnect: true, // Enable auto-reconnect by default
                                 };
 
                                 if let Some(idx) = self.editing_network {

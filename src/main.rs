@@ -11,6 +11,7 @@ mod buffer;
 mod commands;
 mod config;
 mod events;
+mod logging;
 mod protocol;
 mod ui;
 mod validation;
@@ -98,6 +99,7 @@ mod tests {
             nick_change_dialog_open: false,
             nick_change_input: String::new(),
             status_messages: Vec::new(),
+            logger: None, // No logger in tests
         };
         (app, event_tx, action_rx)
     }
@@ -543,6 +545,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         let buffer = app.buffers.get("#test").unwrap();
@@ -582,6 +585,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         let buffer = app.buffers.get("#test").unwrap();
@@ -621,6 +625,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         let buffer = app.buffers.get("#test").unwrap();
@@ -661,6 +666,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert_eq!(app.nickname_input, "alice_away");
@@ -690,6 +696,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert!(app.is_connected);
@@ -719,6 +726,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert!(!app.is_connected);
@@ -747,6 +755,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert!(app.system_log.len() > original_log_size);
@@ -776,6 +785,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert!(app.system_log.len() > original_log_size);
@@ -804,6 +814,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert_eq!(app.active_buffer, "#newchan");
@@ -835,6 +846,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert!(!app.buffers.contains_key("#test"));
@@ -870,6 +882,7 @@ mod tests {
             &mut app.status_messages,
             &app.server_input,
             &app.font_fallback,
+            &app.logger,
         );
 
         assert!(app.buffers.contains_key("alice"));

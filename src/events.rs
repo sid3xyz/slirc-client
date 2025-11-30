@@ -5,6 +5,7 @@ use crossbeam_channel::Receiver;
 use std::collections::{HashMap, HashSet};
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
+use crate::logging::Logger;
 use crate::protocol::{GuiEvent, UserInfo};
 
 /// Process all pending events from the backend.
@@ -20,6 +21,7 @@ pub fn process_events(
     status_messages: &mut Vec<(String, std::time::Instant)>,
     server_input: &str,
     font_fallback: &Option<String>,
+    logger: &Option<Logger>,
 ) {
     // Drain all pending events from the backend
     while let Ok(event) = event_rx.try_recv() {
@@ -114,6 +116,18 @@ pub fn process_events(
                 let msg = RenderedMessage::new(ts.clone(), sender.clone(), text.clone())
                     .with_type(msg_type);
                 buffer.add_message(msg, is_active || is_own_msg, mention);
+                
+                // Log to file (non-blocking)
+                if let Some(logger) = logger {
+                    logger.log(crate::logging::LogEntry {
+                        network: server_input.to_string(),
+                        channel: buffer_name.clone(),
+                        timestamp: ts.clone(),
+                        nick: sender.clone(),
+                        message: text.clone(),
+                    });
+                }
+                
                 // Keep user list updated if a new nick speaks
                 if (buffer_name.starts_with('#') || buffer_name.starts_with('&'))
                     && !buffer.users.iter().any(|u| u.nick == sender)

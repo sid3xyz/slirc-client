@@ -9,6 +9,7 @@ pub enum BackendAction {
         username: String,
         realname: String,
         use_tls: bool,
+        auto_reconnect: bool,
     },
     /// Disconnect from the server
     Disconnect,

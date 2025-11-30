@@ -20,6 +20,8 @@ pub struct Network {
     pub nickserv_password: Option<String>, // Stored in system keyring, not in JSON
     #[serde(default)]
     pub use_tls: bool, // Whether to use TLS for this network
+    #[serde(default)]
+    pub auto_reconnect: bool, // Whether to automatically reconnect on connection loss
 }
 
 impl Default for Network {
@@ -32,6 +34,7 @@ impl Default for Network {
             favorite_channels: vec![],
             nickserv_password: None,
             use_tls: false,
+            auto_reconnect: true, // Enable auto-reconnect by default for resilience
         }
     }
 }

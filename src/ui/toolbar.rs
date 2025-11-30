@@ -89,6 +89,7 @@ pub fn render_toolbar(
                     username: nickname_input.clone(),
                     realname: format!("SLIRC User ({})", nickname_input),
                     use_tls: *use_tls,
+                    auto_reconnect: true, // Enable auto-reconnect for manual connections
                 });
             }
         } else {

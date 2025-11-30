@@ -2,10 +2,11 @@
 
 use std::collections::HashMap;
 
-use eframe::egui;
+use eframe::egui::{self, Stroke};
 
 use crate::buffer::ChannelBuffer;
 use crate::protocol::UserInfo;
+use crate::ui::theme::{panel_colors, spacing};
 
 /// Render the left channel list panel.
 pub fn render_channel_list(
@@ -16,11 +17,31 @@ pub fn render_channel_list(
     context_menu_visible: &mut bool,
     context_menu_target: &mut Option<String>,
 ) {
+    let dark_mode = ctx.style().visuals.dark_mode;
+    let sidebar_bg = panel_colors::sidebar_bg(dark_mode);
+
     egui::SidePanel::left("buffers_panel")
         .resizable(true)
         .default_width(180.0)
+        .frame(
+            egui::Frame::new()
+                .fill(sidebar_bg)
+                .inner_margin(egui::Margin::same(spacing::PANEL_MARGIN))
+                .stroke(Stroke::new(1.0, panel_colors::separator(dark_mode))),
+        )
         .show(ctx, |ui| {
-            ui.add_space(2.0);
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new("Channels")
+                    .size(13.0)
+                    .strong()
+                    .color(if dark_mode {
+                        egui::Color32::from_gray(180)
+                    } else {
+                        egui::Color32::from_gray(80)
+                    }),
+            );
+            ui.add_space(6.0);
             ui.vertical(|ui| {
                 // Hint if no channels joined
                 if buffers_order.len() <= 1 {
@@ -93,19 +114,38 @@ pub fn render_user_list(
     context_menu_visible: &mut bool,
     context_menu_target: &mut Option<String>,
 ) {
+    let dark_mode = ctx.style().visuals.dark_mode;
+    let sidebar_bg = panel_colors::sidebar_bg(dark_mode);
+
     egui::SidePanel::right("users_panel")
         .resizable(true)
-        .default_width(120.0)
+        .default_width(140.0)
+        .frame(
+            egui::Frame::new()
+                .fill(sidebar_bg)
+                .inner_margin(egui::Margin::same(spacing::PANEL_MARGIN))
+                .stroke(Stroke::new(1.0, panel_colors::separator(dark_mode))),
+        )
         .show(ctx, |ui| {
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new(format!("{} users", buffer.users.len()))
-                        .color(egui::Color32::GRAY)
-                        .small(),
+                    egui::RichText::new("Users")
+                        .size(13.0)
+                        .strong()
+                        .color(if dark_mode {
+                            egui::Color32::from_gray(180)
+                        } else {
+                            egui::Color32::from_gray(80)
+                        }),
+                );
+                ui.label(
+                    egui::RichText::new(format!("({})", buffer.users.len()))
+                        .size(11.0)
+                        .color(egui::Color32::GRAY),
                 );
             });
-            ui.add_space(2.0);
+            ui.add_space(6.0);
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for user in &buffer.users {

@@ -160,6 +160,7 @@ mod backend_tests {
             favorite_channels: vec![],
             nickserv_password: None,
             use_tls: true,
+            auto_reconnect: true,
         };
 
         assert!(network.use_tls);
@@ -301,6 +302,7 @@ mod backend_tests {
             username: "testuser".to_string(),
             realname: "Test User".to_string(),
             use_tls: false,
+            auto_reconnect: true,
         };
 
         let cloned = action.clone();

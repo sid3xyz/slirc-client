@@ -42,6 +42,9 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
     rt.block_on(async move {
         let mut transport: Option<Transport> = None;
         let mut current_nick = String::new();
+        
+        // Connection state for auto-reconnect
+        let mut last_connection_params: Option<(String, u16, String, String, String, bool, bool)> = None;
 
         loop {
             // Check for actions from the UI (non-blocking)
@@ -54,8 +57,20 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                         username,
                         realname,
                         use_tls,
+                        auto_reconnect,
                     } => {
                         current_nick = nickname.clone();
+                        
+                        // Save connection parameters for potential reconnect
+                        last_connection_params = Some((
+                            server.clone(),
+                            port,
+                            nickname.clone(),
+                            username.clone(),
+                            realname.clone(),
+                            use_tls,
+                            auto_reconnect,
+                        ));
 
                         // Try to connect
                         let addr = format!("{}:{}", server, port);
@@ -166,6 +181,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             let _ = t.write_message(&quit_msg).await;
                         }
                         transport = None;
+                        last_connection_params = None; // Clear on manual disconnect
                         let _ = event_tx.send(GuiEvent::Disconnected("User disconnected".into()));
                     }
 
@@ -286,6 +302,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             let _ = t.write_message(&quit_msg).await;
                         }
                         transport = None;
+                        last_connection_params = None; // Clear on manual quit
                         let _ = event_tx.send(GuiEvent::Disconnected("User quit".into()));
                     }
 
@@ -547,6 +564,16 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                         transport = None;
                         let _ = event_tx
                             .send(GuiEvent::Disconnected("Connection closed by server".into()));
+                        
+                        // Note: Auto-reconnect would trigger here if last_connection_params.6 is true
+                        // For now, just notify the user
+                        if let Some(params) = &last_connection_params {
+                            if params.6 { // auto_reconnect flag
+                                let _ = event_tx.send(GuiEvent::RawMessage(
+                                    "Connection lost. Auto-reconnect enabled (manual reconnect required for now).".to_string()
+                                ));
+                            }
+                        }
                     }
                     Ok(Err(e)) => {
                         let _ = event_tx.send(GuiEvent::Error(format!("Read error: {:?}", e)));
