@@ -40,6 +40,8 @@ impl Default for Network {
 }
 
 /// Save a NickServ password to the system keyring
+/// Save a NickServ password to the system keyring (for future NickServ support)
+#[allow(dead_code)]
 pub fn save_nickserv_password(network_name: &str, password: &str) -> Result<(), String> {
     use keyring::Entry;
     
@@ -52,7 +54,8 @@ pub fn save_nickserv_password(network_name: &str, password: &str) -> Result<(), 
     Ok(())
 }
 
-/// Load a NickServ password from the system keyring
+/// Load a NickServ password from the system keyring (for future NickServ support)
+#[allow(dead_code)]
 pub fn load_nickserv_password(network_name: &str) -> Option<String> {
     use keyring::Entry;
     
@@ -61,6 +64,8 @@ pub fn load_nickserv_password(network_name: &str) -> Option<String> {
 }
 
 /// Delete a NickServ password from the system keyring
+/// Delete a NickServ password from the system keyring (for future NickServ support)
+#[allow(dead_code)]
 pub fn delete_nickserv_password(network_name: &str) -> Result<(), String> {
     use keyring::Entry;
     

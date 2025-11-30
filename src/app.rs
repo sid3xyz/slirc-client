@@ -1,6 +1,6 @@
 use chrono::Local;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use eframe::egui::{self, Color32};
+use eframe::egui::{self};
 use slirc_proto::ctcp::Ctcp;
 use std::collections::{HashMap, HashSet};
 use std::thread;
@@ -651,7 +651,7 @@ impl eframe::App for SlircApp {
             .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 // Styled input frame with rounding and focus indication
-                let mut input_frame = egui::Frame::new()
+                let input_frame = egui::Frame::new()
                     .fill(if dark_mode {
                         egui::Color32::from_rgb(45, 45, 52)
                     } else {
@@ -1259,82 +1259,27 @@ impl eframe::App for SlircApp {
         }
 
         // Floating status toasts (top-right corner)
-        if !self.status_messages.is_empty() {
-            let msgs: Vec<String> = self
-                .status_messages
-                .iter()
-                .map(|(m, _t)| m.clone())
-                .collect();
-            egui::Area::new(egui::Id::new("status_toast_area"))
-                .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
-                .show(ctx, |ui| {
-                    ui.vertical(|ui| {
-                        for m in msgs {
-                            ui.label(egui::RichText::new(m).color(egui::Color32::LIGHT_GREEN));
-                        }
-                    });
-                });
-        }
+        ui::dialogs::render_status_toasts(ctx, &self.status_messages);
 
-        // Help dialog (F1 toggles visibility)
-        if self.show_help_dialog {
-            let mut open = true;
-            egui::Window::new("Help")
-                .open(&mut open)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    ui.heading("Shortcuts & Commands");
-                    ui.separator();
-                    ui.label("Keyboard Shortcuts:");
-                    ui.label("  - F1: Toggle this help dialog");
-                    ui.label("  - Ctrl+K: Quick channel switcher (fuzzy search)");
-                    ui.label("  - Ctrl+N: Next channel");
-                    ui.label("  - Ctrl+P: Previous channel");
-                    ui.label("  - Enter: Send message (Shift+Enter for newline)");
-                    ui.label("  - ↑/↓: Navigate input history");
-                    ui.label("  - Tab: Auto-complete nicknames");
-                    ui.separator();
-                    ui.label("Slash commands:");
-                    ui.label("  /join <#channel> - join a channel");
-                    ui.label("  /part [#channel] - leave a channel");
-                    ui.label("  /list - browse available channels");
-                    ui.label("  /nick <nick> - change nick");
-                    ui.label("  /me <text> - send CTCP ACTION");
-                    ui.label("  /whois <nick> - request WHOIS");
-                    ui.label("  /topic <text> - set channel topic");
-                    ui.label("  /kick <nick> <reason> - kick with reason");
-                });
-            if !open {
-                self.show_help_dialog = false;
-            }
-        }
+        // Help dialog (F1)
+        ui::dialogs::render_help_dialog(ctx, &mut self.show_help_dialog);
 
         // Nick change dialog
-        if self.nick_change_dialog_open {
-            let mut open = true;
-            let mut newnick = self.nick_change_input.clone();
-            egui::Window::new("Change Nick")
-                .open(&mut open)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.label("New nickname:");
-                    let _resp = ui.add(egui::TextEdit::singleline(&mut newnick));
-                    ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
-                            if !newnick.trim().is_empty() && newnick != self.nickname_input {
-                                let _ = self.action_tx.send(BackendAction::Nick(newnick.clone()));
-                            }
-                            self.nick_change_dialog_open = false;
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.nick_change_dialog_open = false;
-                        }
-                    });
-                });
-            if !open {
-                self.nick_change_dialog_open = false;
-            }
-        }
+        ui::dialogs::render_nick_change_dialog(
+            ctx,
+            &mut self.nick_change_dialog_open,
+            &mut self.nick_change_input,
+            &self.nickname_input,
+            &self.action_tx,
+        );
+
+        // Topic editor dialog
+        ui::dialogs::render_topic_editor(
+            ctx,
+            &mut self.topic_editor_open,
+            &self.buffers,
+            &self.action_tx,
+        );
         
         // Quick switcher overlay (Ctrl+K)
         if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.buffers) {

@@ -297,8 +297,7 @@ mod integration_tests {
     /// Test UserInfo structure
     #[test]
     fn test_user_info_structure() {
-        let users = vec![
-            UserInfo {
+        let users = [UserInfo {
                 nick: "owner".to_string(),
                 prefix: Some('~'),
             },
@@ -321,8 +320,7 @@ mod integration_tests {
             UserInfo {
                 nick: "regular".to_string(),
                 prefix: None,
-            },
-        ];
+            }];
 
         assert_eq!(users.len(), 6);
         assert_eq!(users[0].prefix, Some('~'));

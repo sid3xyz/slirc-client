@@ -65,20 +65,18 @@ impl QuickSwitcher {
         }
 
         // Capture Enter key to select
-        if ctx.input(|i| i.key_pressed(Key::Enter)) && !self.matches.is_empty() {
-            if self.selected_index < self.matches.len() {
+        if ctx.input(|i| i.key_pressed(Key::Enter)) && !self.matches.is_empty()
+            && self.selected_index < self.matches.len() {
                 selected_buffer = Some(self.matches[self.selected_index].clone());
                 self.hide();
                 return selected_buffer;
             }
-        }
 
         // Arrow key navigation
-        if ctx.input(|i| i.key_pressed(Key::ArrowDown)) {
-            if self.selected_index < self.matches.len().saturating_sub(1) {
+        if ctx.input(|i| i.key_pressed(Key::ArrowDown))
+            && self.selected_index < self.matches.len().saturating_sub(1) {
                 self.selected_index += 1;
             }
-        }
         if ctx.input(|i| i.key_pressed(Key::ArrowUp)) {
             self.selected_index = self.selected_index.saturating_sub(1);
         }

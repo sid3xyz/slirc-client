@@ -2,7 +2,7 @@
 //! Implements the design system from /docs/MODERN_UI_DESIGN_PLAN.md
 //! Inspired by Discord, Slack, and modern chat applications (2025 standards).
 
-use eframe::egui::{self, Color32, FontFamily, FontId, Style, TextStyle};
+use eframe::egui::{Color32, FontFamily, FontId, Style, TextStyle};
 use std::collections::BTreeMap;
 
 /// Modern theme with semantic color system (7-level surface hierarchy)

@@ -4,7 +4,7 @@
 mod backend_tests {
     use crossbeam_channel::unbounded;
     use std::time::Duration;
-    use tokio::time::timeout;
+    
 
     use crate::protocol::{BackendAction, GuiEvent};
 
@@ -231,12 +231,12 @@ mod backend_tests {
     #[test]
     fn test_event_processing_flow() {
         use crate::buffer::ChannelBuffer;
-        use crate::protocol::{GuiEvent, UserInfo};
+        use crate::protocol::UserInfo;
         use std::collections::HashMap;
 
         let mut buffers = HashMap::new();
         let mut buffers_order = Vec::new();
-        let mut system_log: Vec<String> = Vec::new();
+        let system_log: Vec<String> = Vec::new();
 
         // Simulate receiving a Names event
         let names = vec![
@@ -266,7 +266,7 @@ mod backend_tests {
     #[test]
     fn test_command_parsing() {
         use crate::commands;
-        use crate::buffer::ChannelBuffer;
+        
         use crossbeam_channel::unbounded;
         use std::collections::HashMap;
 

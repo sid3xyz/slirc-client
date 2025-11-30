@@ -149,7 +149,7 @@ fn group_messages(messages: &[RenderedMessage]) -> Vec<MessageGroup<'_>> {
         }
 
         // Check if we should continue the previous group
-        let should_group = groups.last().map_or(false, |last| {
+        let should_group = groups.last().is_some_and(|last| {
             !last.is_system
                 && last.sender == msg.sender
                 && matches!(msg.msg_type, MessageType::Normal | MessageType::Action | MessageType::Notice)
