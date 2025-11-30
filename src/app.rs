@@ -1,6 +1,6 @@
 use chrono::Local;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use eframe::egui;
+use eframe::egui::{self, Color32};
 use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::time::Duration;
@@ -593,7 +593,6 @@ impl eframe::App for SlircApp {
         let dark_mode = ctx.style().visuals.dark_mode;
         let theme = self.get_theme();
         let input_bg = theme.surface[1];
-        let _focus_border = theme.accent;
 
         egui::TopBottomPanel::bottom("input_panel")
             .frame(
@@ -608,7 +607,7 @@ impl eframe::App for SlircApp {
             .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 // Styled input frame with rounding and focus indication
-                let input_frame = egui::Frame::new()
+                let mut input_frame = egui::Frame::new()
                     .fill(if dark_mode {
                         egui::Color32::from_rgb(45, 45, 52)
                     } else {
@@ -625,6 +624,12 @@ impl eframe::App for SlircApp {
                         .frame(false)
                         .hint_text("Type a message... (Enter to send)"),
                 );
+                
+                // Draw focus ring (two rects: outer border, inner transparent)
+                if response.has_focus() {
+                    let outer = response.rect.expand(2.0);
+                    ui.painter().rect_filled(outer, 8.0, theme.accent.linear_multiply(0.3));
+                }
 
                 // Detect Enter (without Shift) to send a message. Shift+Enter inserts newline in the
                 // multiline text edit by default.
@@ -1239,9 +1244,12 @@ impl eframe::App for SlircApp {
                     ui.separator();
                     ui.label("Keyboard Shortcuts:");
                     ui.label("  - F1: Toggle this help dialog");
+                    ui.label("  - Ctrl+K: Quick channel switcher (fuzzy search)");
                     ui.label("  - Ctrl+N: Next channel");
-                    ui.label("  - Ctrl+K / Ctrl+P: Previous channel");
+                    ui.label("  - Ctrl+P: Previous channel");
                     ui.label("  - Enter: Send message (Shift+Enter for newline)");
+                    ui.label("  - ↑/↓: Navigate input history");
+                    ui.label("  - Tab: Auto-complete nicknames");
                     ui.separator();
                     ui.label("Slash commands:");
                     ui.label("  /join <#channel> - join a channel");
