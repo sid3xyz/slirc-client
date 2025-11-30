@@ -86,38 +86,7 @@ pub fn render_menu_bar(
             });
         });
 
-        // Edit Menu
-        ui.menu_button("Edit", |ui| {
-            ui.add_enabled_ui(false, |ui| {
-                ui.horizontal(|ui| {
-                    let _ = ui.button("Copy");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("Ctrl+C").weak().small());
-                    });
-                });
-            });
-
-            ui.separator();
-
-            ui.add_enabled_ui(false, |ui| {
-                ui.horizontal(|ui| {
-                    let _ = ui.button("Find in Chat...");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("Ctrl+F").weak().small());
-                    });
-                });
-            });
-
-            ui.separator();
-
-            if ui.button("Preferences...")
-                .on_hover_text("Open settings dialog")
-                .clicked()
-            {
-                // TODO: Implement preferences dialog
-                ui.close_menu();
-            }
-        });
+        // Edit Menu - Removed as all items were disabled/TODO
 
         // View Menu
         ui.menu_button("View", |ui| {
@@ -141,35 +110,6 @@ pub fn render_menu_bar(
                 ui.checkbox(show_user_list, "Show User List");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new("Ctrl+U").weak().small());
-                });
-            });
-
-            ui.separator();
-
-            ui.add_enabled_ui(false, |ui| {
-                ui.horizontal(|ui| {
-                    let _ = ui.button("Zoom In");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("Ctrl++").weak().small());
-                    });
-                });
-            });
-
-            ui.add_enabled_ui(false, |ui| {
-                ui.horizontal(|ui| {
-                    let _ = ui.button("Zoom Out");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("Ctrl+-").weak().small());
-                    });
-                });
-            });
-
-            ui.add_enabled_ui(false, |ui| {
-                ui.horizontal(|ui| {
-                    let _ = ui.button("Reset Zoom");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("Ctrl+0").weak().small());
-                    });
                 });
             });
         });
@@ -226,35 +166,6 @@ pub fn render_menu_bar(
                     });
                 });
             });
-
-            ui.add_enabled_ui(is_connected, |ui| {
-                if ui.button("Search Users...").clicked() {
-                    // TODO: Implement user search
-                    ui.close_menu();
-                }
-            });
-
-            ui.separator();
-
-            ui.add_enabled_ui(is_connected, |ui| {
-                if ui.button("Server Info").clicked() {
-                    // TODO: Show server info
-                    ui.close_menu();
-                }
-            });
-
-            ui.horizontal(|ui| {
-                if ui.add_enabled(is_connected, egui::Button::new("Reconnect"))
-                    .on_hover_text("Reconnect to server")
-                    .clicked()
-                {
-                    // TODO: Implement reconnect
-                    ui.close_menu();
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new("Ctrl+R").weak().small());
-                });
-            });
         });
 
         // Help Menu
@@ -284,23 +195,6 @@ pub fn render_menu_bar(
                     ui.label(egui::RichText::new("F1").weak().small());
                 });
             });
-
-            ui.separator();
-
-            ui.add_enabled_ui(false, |ui| {
-                let _ = ui.button("Check for Updates");
-            });
-
-            ui.add_enabled_ui(false, |ui| {
-                let _ = ui.button("Report Issue...");
-            });
-
-            ui.separator();
-
-            if ui.button("About slirc").clicked() {
-                // TODO: Show about dialog
-                ui.close_menu();
-            }
         });
     });
     

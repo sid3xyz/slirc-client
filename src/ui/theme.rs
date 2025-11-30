@@ -110,6 +110,40 @@ pub fn configure_text_styles() -> BTreeMap<TextStyle, FontId> {
     .into()
 }
 
+/// Apply the modern theme style to the egui context
+pub fn apply_app_style(ctx: &eframe::egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    
+    // Set professional font sizes and improved spacing
+    style.text_styles = configure_text_styles();
+    
+    // Increase global spacing for breathing room
+    style.spacing.item_spacing = eframe::egui::vec2(8.0, 6.0);
+    style.spacing.window_margin = eframe::egui::Margin::same(12);
+    style.spacing.button_padding = eframe::egui::vec2(10.0, 5.0);
+    
+    // Modern button styling
+    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(55, 60, 70);
+    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(55, 60, 70);
+    style.visuals.widgets.inactive.bg_stroke = eframe::egui::Stroke::NONE;
+    style.visuals.widgets.inactive.corner_radius = eframe::egui::CornerRadius::same(6);
+    
+    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(70, 76, 88);
+    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(70, 76, 88);
+    style.visuals.widgets.hovered.bg_stroke = eframe::egui::Stroke::NONE;
+    style.visuals.widgets.hovered.corner_radius = eframe::egui::CornerRadius::same(6);
+    
+    style.visuals.widgets.active.bg_fill = Color32::from_rgb(88, 101, 242);
+    style.visuals.widgets.active.weak_bg_fill = Color32::from_rgb(88, 101, 242);
+    style.visuals.widgets.active.corner_radius = eframe::egui::CornerRadius::same(6);
+    
+    // Text input styling
+    style.visuals.extreme_bg_color = Color32::from_rgb(30, 32, 38);
+    style.visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(88, 101, 242, 100);
+    
+    ctx.set_style(style);
+}
+
 /// Modern nick color palette - 16 vibrant, accessible colors
 const NICK_COLORS: [Color32; 16] = [
     Color32::from_rgb(231, 76, 60),   // Vibrant red

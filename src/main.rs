@@ -14,6 +14,7 @@ mod events;
 mod fonts;
 mod logging;
 mod protocol;
+mod state;
 mod ui;
 mod validation;
 
@@ -57,6 +58,7 @@ mod tests {
     use crate::buffer::ChannelBuffer;
     use crate::config::{DEFAULT_CHANNEL, DEFAULT_SERVER};
     use crate::protocol::{BackendAction, GuiEvent, UserInfo};
+    use crate::state::ClientState;
     use crossbeam_channel::unbounded;
     use std::collections::{HashMap, HashSet};
 
@@ -68,23 +70,20 @@ mod tests {
     ) {
         let (action_tx, action_rx) = unbounded::<BackendAction>();
         let (event_tx, event_rx) = unbounded::<GuiEvent>();
-        // Pre-populate System buffer
-        let mut buffers = HashMap::new();
-        buffers.insert("System".to_string(), ChannelBuffer::new());
+        
+        // Create state with pre-populated System buffer
+        let mut state = ClientState::new();
+        state.logger = None; // No logger in tests
 
         let app = SlircApp {
+            state,
             server_input: DEFAULT_SERVER.into(),
             nickname_input: "tester".into(),
-            is_connected: false,
             use_tls: false,
             action_tx,
             event_rx,
-            buffers,
-            buffers_order: vec!["System".into()],
-            active_buffer: "System".into(),
             channel_input: DEFAULT_CHANNEL.into(),
             message_input: String::new(),
-            system_log: Vec::new(),
             history: Vec::new(),
             history_pos: None,
             history_saved_input: None,
@@ -97,13 +96,8 @@ mod tests {
             completion_target_channel: false,
             last_input_text: String::new(),
             theme: String::from("dark"),
-            font_fallback: None,
-            networks: Vec::new(),
             show_channel_list: true,
             show_user_list: true,
-            expanded_networks: HashSet::new(),
-            status_messages: Vec::new(),
-            logger: None, // No logger in tests
             quick_switcher: crate::ui::quick_switcher::QuickSwitcher::default(),
             // Dialogs using Option pattern
             help_dialog: crate::ui::dialogs::HelpDialog::new(),
@@ -117,14 +111,13 @@ mod tests {
 
     #[test]
     fn test_clean_motd() {
-        let font_fallback = None;
-        assert_eq!(crate::events::clean_motd_line("-", &font_fallback), "");
-        assert_eq!(crate::events::clean_motd_line(":-", &font_fallback), "");
-        assert_eq!(crate::events::clean_motd_line(":- ", &font_fallback), "");
-        assert_eq!(crate::events::clean_motd_line(":- Hello world", &font_fallback), "Hello world");
-        assert_eq!(crate::events::clean_motd_line("- ═════════", &font_fallback), "---------"); // replaced since no font fallback
-        assert_eq!(crate::events::clean_motd_line("Hello", &font_fallback), "Hello");
-        assert_eq!(crate::events::clean_motd_line(" - Hello", &font_fallback), "Hello");
+        assert_eq!(crate::events::clean_motd_line("-"), "");
+        assert_eq!(crate::events::clean_motd_line(":-"), "");
+        assert_eq!(crate::events::clean_motd_line(":- "), "");
+        assert_eq!(crate::events::clean_motd_line(":- Hello world"), "Hello world");
+        assert_eq!(crate::events::clean_motd_line("- ═════════"), "═════════"); // preserved with bundled fonts
+        assert_eq!(crate::events::clean_motd_line("Hello"), "Hello");
+        assert_eq!(crate::events::clean_motd_line(" - Hello"), "Hello");
     }
 
     #[test]
@@ -136,6 +129,7 @@ mod tests {
 
         app.process_events();
         assert!(app
+            .state
             .system_log
             .iter()
             .any(|l| l.contains("MOTD: Welcome to the server")));
@@ -165,8 +159,8 @@ mod tests {
         });
         app.process_events();
         // Buffer should be created and populated
-        assert!(app.buffers.contains_key("#test"));
-        let buf = app.buffers.get("#test").unwrap();
+        assert!(app.state.buffers.contains_key("#test"));
+        let buf = app.state.buffers.get("#test").unwrap();
         assert_eq!(buf.users.len(), 3);
         assert!(buf
             .users
@@ -188,7 +182,7 @@ mod tests {
             nick: "alice".into(),
             prefix: None,
         });
-        app.buffers.insert("#test".into(), buf);
+        app.state.buffers.insert("#test".into(), buf);
 
         let _ = event_tx.send(GuiEvent::UserMode {
             channel: "#test".into(),
@@ -197,7 +191,7 @@ mod tests {
             added: true,
         });
         app.process_events();
-        let b = app.buffers.get("#test").unwrap();
+        let b = app.state.buffers.get("#test").unwrap();
         assert!(b
             .users
             .iter()
@@ -211,7 +205,7 @@ mod tests {
             added: false,
         });
         app.process_events();
-        let b2 = app.buffers.get("#test").unwrap();
+        let b2 = app.state.buffers.get("#test").unwrap();
         assert!(b2
             .users
             .iter()
@@ -226,23 +220,23 @@ mod tests {
             topic: "New Topic".into(),
         });
         app.process_events();
-        let b = app.buffers.get("#test").unwrap();
+        let b = app.state.buffers.get("#test").unwrap();
         assert_eq!(b.topic, "New Topic");
     }
 
     #[test]
     fn test_whois_command_sends_action() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
 
         // Set the message input to a whois command and ensure the action is sent
         app.message_input = String::from("/whois someuser");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -262,7 +256,7 @@ mod tests {
             text: "This is a notice".into(),
         });
         app.process_events();
-        let buf = app.buffers.get("-server-").unwrap();
+        let buf = app.state.buffers.get("-server-").unwrap();
         assert!(!buf.messages.is_empty());
         assert_eq!(buf.messages.last().unwrap().msg_type, MessageType::Notice);
     }
@@ -272,8 +266,9 @@ mod tests {
         let (mut app, event_tx, _) = create_test_app();
         let _ = event_tx.send(GuiEvent::Connected);
         app.process_events();
-        assert!(!app.status_messages.is_empty());
+        assert!(!app.state.status_messages.is_empty());
         assert!(app
+            .state
             .status_messages
             .last()
             .unwrap()
@@ -284,18 +279,18 @@ mod tests {
     #[test]
     fn test_topic_command_set_and_show() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
-        app.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
+        app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         // Set the message input to a topic change command and ensure the action is sent
         app.message_input = String::from("/topic New Topic");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -308,33 +303,33 @@ mod tests {
         }
 
         // Now test that /topic with no args displays the topic in system_log
-        app.buffers.get_mut("#test").unwrap().topic = "Displayed Topic".into();
+        app.state.buffers.get_mut("#test").unwrap().topic = "Displayed Topic".into();
         app.message_input = String::from("/topic");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
-        assert!(app.system_log.iter().any(|l| l.contains("Displayed Topic")));
+        assert!(app.state.system_log.iter().any(|l| l.contains("Displayed Topic")));
     }
 
     #[test]
     fn test_kick_command_sends_action() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
-        app.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
+        app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         app.message_input = String::from("/kick alice Spamming");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -355,17 +350,17 @@ mod tests {
     #[test]
     fn test_me_command_sends_action_ctcp() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
-        app.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
+        app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         app.message_input = String::from("/me waves hello");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -381,16 +376,16 @@ mod tests {
     #[test]
     fn test_nick_command_sends_action() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
         app.nickname_input = "oldnick".into();
 
         app.message_input = String::from("/nick newnick");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         assert_eq!(app.nickname_input, "newnick");
@@ -406,15 +401,15 @@ mod tests {
     #[test]
     fn test_quit_command_sends_action() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
 
         app.message_input = String::from("/quit Goodbye everyone");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -429,15 +424,15 @@ mod tests {
     #[test]
     fn test_quit_command_without_reason() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
 
         app.message_input = String::from("/quit");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -452,72 +447,72 @@ mod tests {
     #[test]
     fn test_help_command_shows_usage() {
         let (mut app, _, _) = create_test_app();
-        let original_log_size = app.system_log.len();
+        let original_log_size = app.state.system_log.len();
 
         app.message_input = String::from("/help");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
-        assert!(app.system_log.len() > original_log_size);
-        assert!(app.system_log.last().unwrap().contains("Supported commands"));
+        assert!(app.state.system_log.len() > original_log_size);
+        assert!(app.state.system_log.last().unwrap().contains("Supported commands"));
     }
 
     #[test]
     fn test_unknown_command_logs_error() {
         let (mut app, _, _) = create_test_app();
-        let original_log_size = app.system_log.len();
+        let original_log_size = app.state.system_log.len();
 
         app.message_input = String::from("/foobar");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
-        assert!(app.system_log.len() > original_log_size);
-        assert!(app.system_log.last().unwrap().contains("Unknown command"));
-        assert!(app.system_log.last().unwrap().contains("foobar"));
+        assert!(app.state.system_log.len() > original_log_size);
+        assert!(app.state.system_log.last().unwrap().contains("Unknown command"));
+        assert!(app.state.system_log.last().unwrap().contains("foobar"));
     }
 
     #[test]
     fn test_msg_command_without_message() {
         let (mut app, _, _) = create_test_app();
-        let original_log_size = app.system_log.len();
+        let original_log_size = app.state.system_log.len();
 
         app.message_input = String::from("/msg alice");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
-        assert!(app.system_log.len() > original_log_size);
-        assert!(app.system_log.last().unwrap().contains("Usage"));
+        assert!(app.state.system_log.len() > original_log_size);
+        assert!(app.state.system_log.last().unwrap().contains("Usage"));
     }
 
     #[test]
     fn test_part_without_args_parts_active_channel() {
         let (mut app, _, action_rx) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
-        app.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
+        app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         app.message_input = String::from("/part");
         assert!(crate::commands::handle_user_command(
             &app.message_input,
-            &app.active_buffer,
-            &app.buffers,
+            &app.state.active_buffer,
+            &app.state.buffers,
             &app.action_tx,
-            &mut app.system_log,
+            &mut app.state.system_log,
             &mut app.nickname_input,
         ));
         let action = action_rx.try_recv().unwrap();
@@ -533,9 +528,9 @@ mod tests {
     #[test]
     fn test_user_joined_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
-        app.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
+        app.state.buffers.insert("#test".into(), ChannelBuffer::new());
 
         event_tx
             .send(GuiEvent::UserJoined {
@@ -546,20 +541,20 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        let buffer = app.buffers.get("#test").unwrap();
+        let buffer = app.state.buffers.get("#test").unwrap();
         assert!(buffer.users.iter().any(|u| u.nick == "alice"));
         assert!(buffer.messages.iter().any(|m| m.text.contains("alice joined")));
     }
@@ -567,14 +562,14 @@ mod tests {
     #[test]
     fn test_user_parted_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
         let mut buffer = ChannelBuffer::new();
         buffer.users.push(UserInfo {
             nick: "alice".to_string(),
             prefix: None,
         });
-        app.buffers.insert("#test".into(), buffer);
+        app.state.buffers.insert("#test".into(), buffer);
 
         event_tx
             .send(GuiEvent::UserParted {
@@ -586,20 +581,20 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        let buffer = app.buffers.get("#test").unwrap();
+        let buffer = app.state.buffers.get("#test").unwrap();
         assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
         assert!(buffer.messages.iter().any(|m| m.text.contains("alice left")));
         assert!(buffer.messages.iter().any(|m| m.text.contains("Goodbye")));
@@ -608,14 +603,14 @@ mod tests {
     #[test]
     fn test_user_quit_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
         let mut buffer = ChannelBuffer::new();
         buffer.users.push(UserInfo {
             nick: "bob".to_string(),
             prefix: None,
         });
-        app.buffers.insert("#test".into(), buffer);
+        app.state.buffers.insert("#test".into(), buffer);
 
         event_tx
             .send(GuiEvent::UserQuit {
@@ -626,20 +621,20 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        let buffer = app.buffers.get("#test").unwrap();
+        let buffer = app.state.buffers.get("#test").unwrap();
         assert!(!buffer.users.iter().any(|u| u.nick == "bob"));
         assert!(buffer.messages.iter().any(|m| m.text.contains("bob quit")));
         assert!(buffer.messages.iter().any(|m| m.text.contains("Connection reset")));
@@ -648,15 +643,15 @@ mod tests {
     #[test]
     fn test_nick_changed_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
         app.nickname_input = "alice".into();
-        app.active_buffer = "#test".into();
+        app.state.active_buffer = "#test".into();
         let mut buffer = ChannelBuffer::new();
         buffer.users.push(UserInfo {
             nick: "alice".to_string(),
             prefix: None,
         });
-        app.buffers.insert("#test".into(), buffer);
+        app.state.buffers.insert("#test".into(), buffer);
 
         event_tx
             .send(GuiEvent::NickChanged {
@@ -667,21 +662,21 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
         assert_eq!(app.nickname_input, "alice_away");
-        let buffer = app.buffers.get("#test").unwrap();
+        let buffer = app.state.buffers.get("#test").unwrap();
         assert!(buffer.users.iter().any(|u| u.nick == "alice_away"));
         assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
         assert!(buffer.messages.iter().any(|m| m.text.contains("alice is now known as alice_away")));
@@ -690,36 +685,36 @@ mod tests {
     #[test]
     fn test_connected_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = false;
+        app.state.is_connected = false;
         app.server_input = "irc.example.com".into();
 
         event_tx.send(GuiEvent::Connected).unwrap();
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert!(app.is_connected);
-        assert!(app.expanded_networks.contains("irc.example.com"));
-        assert!(app.system_log.iter().any(|m| m.contains("Connected")));
-        assert!(!app.status_messages.is_empty());
+        assert!(app.state.is_connected);
+        assert!(app.state.expanded_networks.contains("irc.example.com"));
+        assert!(app.state.system_log.iter().any(|m| m.contains("Connected")));
+        assert!(!app.state.status_messages.is_empty());
     }
 
     #[test]
     fn test_disconnected_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
 
         event_tx
             .send(GuiEvent::Disconnected("Connection lost".to_string()))
@@ -727,28 +722,28 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert!(!app.is_connected);
-        assert!(app.system_log.iter().any(|m| m.contains("Disconnected")));
-        assert!(app.system_log.iter().any(|m| m.contains("Connection lost")));
+        assert!(!app.state.is_connected);
+        assert!(app.state.system_log.iter().any(|m| m.contains("Disconnected")));
+        assert!(app.state.system_log.iter().any(|m| m.contains("Connection lost")));
     }
 
     #[test]
     fn test_error_event() {
         let (mut app, event_tx, _) = create_test_app();
-        let original_log_size = app.system_log.len();
+        let original_log_size = app.state.system_log.len();
 
         event_tx
             .send(GuiEvent::Error("Test error message".to_string()))
@@ -756,29 +751,29 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert!(app.system_log.len() > original_log_size);
-        assert!(app.system_log.iter().any(|m| m.contains("Error")));
-        assert!(app.system_log.iter().any(|m| m.contains("Test error message")));
-        assert!(!app.status_messages.is_empty());
+        assert!(app.state.system_log.len() > original_log_size);
+        assert!(app.state.system_log.iter().any(|m| m.contains("Error")));
+        assert!(app.state.system_log.iter().any(|m| m.contains("Test error message")));
+        assert!(!app.state.status_messages.is_empty());
     }
 
     #[test]
     fn test_raw_message_event() {
         let (mut app, event_tx, _) = create_test_app();
-        let original_log_size = app.system_log.len();
+        let original_log_size = app.state.system_log.len();
 
         event_tx
             .send(GuiEvent::RawMessage("PING :server".to_string()))
@@ -786,28 +781,28 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert!(app.system_log.len() > original_log_size);
-        assert!(app.system_log.iter().any(|m| m.contains("PING :server")));
+        assert!(app.state.system_log.len() > original_log_size);
+        assert!(app.state.system_log.iter().any(|m| m.contains("PING :server")));
     }
 
     #[test]
     fn test_joined_channel_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "System".into();
+        app.state.is_connected = true;
+        app.state.active_buffer = "System".into();
 
         event_tx
             .send(GuiEvent::JoinedChannel("#newchan".to_string()))
@@ -815,31 +810,31 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert_eq!(app.active_buffer, "#newchan");
-        assert!(app.buffers.contains_key("#newchan"));
-        assert!(app.system_log.iter().any(|m| m.contains("Joined #newchan")));
+        assert_eq!(app.state.active_buffer, "#newchan");
+        assert!(app.state.buffers.contains_key("#newchan"));
+        assert!(app.state.system_log.iter().any(|m| m.contains("Joined #newchan")));
     }
 
     #[test]
     fn test_parted_channel_event() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
-        app.active_buffer = "#test".into();
-        app.buffers.insert("#test".into(), ChannelBuffer::new());
-        app.buffers_order.push("#test".into());
+        app.state.is_connected = true;
+        app.state.active_buffer = "#test".into();
+        app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+        app.state.buffers_order.push("#test".into());
 
         event_tx
             .send(GuiEvent::PartedChannel("#test".to_string()))
@@ -847,29 +842,29 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert!(!app.buffers.contains_key("#test"));
-        assert!(!app.buffers_order.contains(&"#test".to_string()));
-        assert_eq!(app.active_buffer, "System");
-        assert!(app.system_log.iter().any(|m| m.contains("Left #test")));
+        assert!(!app.state.buffers.contains_key("#test"));
+        assert!(!app.state.buffers_order.contains(&"#test".to_string()));
+        assert_eq!(app.state.active_buffer, "System");
+        assert!(app.state.system_log.iter().any(|m| m.contains("Left #test")));
     }
 
     #[test]
     fn test_message_received_creates_pm_buffer() {
         let (mut app, event_tx, _) = create_test_app();
-        app.is_connected = true;
+        app.state.is_connected = true;
         app.nickname_input = "me".into();
 
         // PM from alice
@@ -883,21 +878,21 @@ mod tests {
 
         crate::events::process_events(
             &app.event_rx,
-            &mut app.is_connected,
-            &mut app.buffers,
-            &mut app.buffers_order,
-            &mut app.active_buffer,
+            &mut app.state.is_connected,
+            &mut app.state.buffers,
+            &mut app.state.buffers_order,
+            &mut app.state.active_buffer,
             &mut app.nickname_input,
-            &mut app.system_log,
-            &mut app.expanded_networks,
-            &mut app.status_messages,
+            &mut app.state.system_log,
+            &mut app.state.expanded_networks,
+            &mut app.state.status_messages,
             &app.server_input,
-            &app.font_fallback,
-            &app.logger,
+            
+            &app.state.logger,
         );
 
-        assert!(app.buffers.contains_key("alice"));
-        let buffer = app.buffers.get("alice").unwrap();
+        assert!(app.state.buffers.contains_key("alice"));
+        let buffer = app.state.buffers.get("alice").unwrap();
         assert!(buffer.messages.iter().any(|m| m.text.contains("Hello there!")));
     }
 }

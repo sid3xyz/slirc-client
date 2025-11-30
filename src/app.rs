@@ -2,7 +2,7 @@ use chrono::Local;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui::{self};
 use slirc_proto::ctcp::Ctcp;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::thread;
 use std::time::Duration;
 
@@ -10,11 +10,11 @@ use crate::backend::run_backend;
 use crate::buffer::ChannelBuffer;
 use crate::commands;
 use crate::config::{
-    load_nickserv_password, load_settings, save_settings, Network, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
+    load_nickserv_password, load_settings, save_settings, Settings, DEFAULT_CHANNEL, DEFAULT_SERVER,
 };
 use crate::events;
-use crate::logging::Logger;
 use crate::protocol::{BackendAction, GuiEvent};
+use crate::state::ClientState;
 use crate::ui;
 use crate::ui::dialogs::{
     ChannelBrowserDialog, ChannelListItem, DialogAction, HelpDialog,
@@ -22,52 +22,46 @@ use crate::ui::dialogs::{
 };
 
 pub struct SlircApp {
-    // Connection settings
+    // Core state (buffers, networks, connection status, etc.)
+    pub state: ClientState,
+
+    // Connection settings (form inputs)
     pub server_input: String,
     pub nickname_input: String,
-    pub is_connected: bool,
     pub use_tls: bool,
 
     // Channels for backend communication
     pub action_tx: Sender<BackendAction>,
     pub event_rx: Receiver<GuiEvent>,
 
-    // UI State - HexChat style
-    pub buffers: HashMap<String, ChannelBuffer>,
-    pub buffers_order: Vec<String>,
-    pub active_buffer: String,
+    // Input state
     pub channel_input: String,
     pub message_input: String,
 
-    // System log
-    pub system_log: Vec<String>,
     // Input history
     pub history: Vec<String>,
     pub history_pos: Option<usize>,
     pub history_saved_input: Option<String>,
+
     // Context menus and floating windows
     pub context_menu_visible: bool,
     pub context_menu_target: Option<String>,
     pub open_windows: HashSet<String>,
+
     // Tab completion state
     pub completions: Vec<String>,
     pub completion_index: Option<usize>,
     pub completion_prefix: Option<String>,
     pub completion_target_channel: bool,
     pub last_input_text: String,
+
+    // Theme
     pub theme: String,
-    // If we loaded a fallback font from the system, store it here
-    pub font_fallback: Option<String>,
-    // Network management
-    pub networks: Vec<Network>,
+
     // UI visibility toggles
     pub show_channel_list: bool,
     pub show_user_list: bool,
-    pub expanded_networks: HashSet<String>,
-    // Status messages (toasts)
-    pub status_messages: Vec<(String, std::time::Instant)>,
-    // Chat logger
-    pub logger: Option<Logger>,
+
     // Quick switcher (Ctrl+K)
     pub quick_switcher: ui::quick_switcher::QuickSwitcher,
     
@@ -107,117 +101,26 @@ impl SlircApp {
         }
 
         // Load professional IRC-appropriate fonts
-        // Prioritize monospace fonts that render well for IRC (like HexChat)
-        let mut fonts = egui::FontDefinitions::default();
+        // Use the centralized font loader from fonts.rs
+        cc.egui_ctx.set_fonts(crate::fonts::setup_fonts());
 
-        // Candidate font paths (ordered by quality for IRC)
-        let candidates = [
-            // Linux - prefer monospace fonts for IRC
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-            "/usr/share/fonts/truetype/liberation-mono/LiberationMono-Regular.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
-            "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
-            "/usr/share/fonts/truetype/hack/Hack-Regular.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            // macOS
-            "/System/Library/Fonts/Monaco.ttf",
-            "/Library/Fonts/Courier New.ttf",
-            "/System/Library/Fonts/Menlo.ttc",
-            // Windows
-            "C:\\Windows\\Fonts\\consola.ttf", // Consolas
-            "C:\\Windows\\Fonts\\cour.ttf",    // Courier New
-        ];
+        // Apply modern theme styling
+        ui::theme::apply_app_style(&cc.egui_ctx);
 
-        let mut chosen_font: Option<String> = None;
-        for path in candidates.iter() {
-            let p = std::path::Path::new(path);
-            if p.exists() {
-                if let Ok(bytes) = std::fs::read(p) {
-                    fonts.font_data.insert(
-                        "irc_font".to_owned(),
-                        egui::FontData::from_owned(bytes).into(),
-                    );
-                    // Use as primary font for better rendering
-                    if let Some(proportional) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-                        proportional.insert(0, "irc_font".to_owned());
-                    }
-                    if let Some(monospace) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
-                        monospace.insert(0, "irc_font".to_owned());
-                    }
-                    cc.egui_ctx.set_fonts(fonts);
-                    chosen_font = Some(path.to_string());
-                    break;
-                }
-            }
-        }
-
-        // Set professional font sizes and improved spacing
-        let mut style = (*cc.egui_ctx.style()).clone();
-        style.text_styles = [
-            (
-                egui::TextStyle::Small,
-                egui::FontId::new(11.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Body,
-                egui::FontId::new(14.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Monospace,
-                egui::FontId::new(13.0, egui::FontFamily::Monospace),
-            ),
-            (
-                egui::TextStyle::Button,
-                egui::FontId::new(13.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Heading,
-                egui::FontId::new(16.0, egui::FontFamily::Proportional),
-            ),
-        ]
-        .into();
-        // Increase global spacing for breathing room
-        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        style.spacing.window_margin = egui::Margin::same(12);
-        style.spacing.button_padding = egui::vec2(10.0, 5.0);
-        
-        // Modern button styling
-        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(55, 60, 70);
-        style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(55, 60, 70);
-        style.visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-        style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
-        
-        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(70, 76, 88);
-        style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(70, 76, 88);
-        style.visuals.widgets.hovered.bg_stroke = egui::Stroke::NONE;
-        style.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
-        
-        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(88, 101, 242);
-        style.visuals.widgets.active.weak_bg_fill = egui::Color32::from_rgb(88, 101, 242);
-        style.visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
-        
-        // Text input styling
-        style.visuals.extreme_bg_color = egui::Color32::from_rgb(30, 32, 38);
-        style.visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(88, 101, 242, 100);
-        
-        cc.egui_ctx.set_style(style);
+        let state = ClientState::new();
 
         let mut app = Self {
+            state,
             server_input: DEFAULT_SERVER.into(),
             nickname_input: "slirc_user".into(),
-            is_connected: false,
             use_tls: false,
 
             action_tx,
             event_rx,
 
-            buffers: HashMap::new(),
-            active_buffer: "System".into(),
             channel_input: DEFAULT_CHANNEL.into(),
             message_input: String::new(),
 
-            system_log: vec!["Welcome to SLIRC!".into()],
             history: Vec::new(),
             history_pos: None,
             history_saved_input: None,
@@ -226,18 +129,12 @@ impl SlircApp {
             completion_prefix: None,
             completion_target_channel: false,
             last_input_text: String::new(),
-            theme: "dark".into(), // Default theme
+            theme: "dark".into(),
             context_menu_visible: false,
             context_menu_target: None,
             open_windows: HashSet::new(),
-            buffers_order: vec!["System".into()],
-            font_fallback: chosen_font,
-            networks: Vec::new(),
             show_channel_list: true,
             show_user_list: true,
-            expanded_networks: HashSet::new(),
-            status_messages: Vec::new(),
-            logger: Logger::new().ok(), // Initialize logger, silently fail if can't create
             quick_switcher: ui::quick_switcher::QuickSwitcher::default(),
             
             // Dialogs - Option pattern for open/closed state
@@ -248,8 +145,6 @@ impl SlircApp {
             channel_browser_dialog: None,
         };
 
-        // Create the System buffer
-        app.buffers.insert("System".into(), ChannelBuffer::new());
         // Restore settings if present
         if let Some(s) = settings {
             if !s.server.is_empty() {
@@ -267,7 +162,7 @@ impl SlircApp {
             if !s.theme.is_empty() {
                 app.theme = s.theme;
             }
-            app.networks = s.networks.clone();
+            app.state.networks = s.networks.clone();
 
             // Auto-connect to networks with auto_connect flag
             for network in &s.networks {
@@ -309,7 +204,7 @@ impl SlircApp {
             default_channel: self.channel_input.clone(),
             history: self.history.clone(),
             theme: self.theme.clone(),
-            networks: self.networks.clone(),
+            networks: self.state.networks.clone(),
         };
         if let Err(e) = save_settings(&settings) {
             eprintln!("Failed to save networks: {}", e);
@@ -342,14 +237,14 @@ impl SlircApp {
         
         if prefix.starts_with('#') || prefix.starts_with('&') {
             // channel completions
-            for b in &self.buffers_order {
+            for b in &self.state.buffers_order {
                 if b.starts_with(prefix) {
                     matches.push(b.clone());
                 }
             }
         } else if !prefix.starts_with('/') {
             // user completions from active buffer (skip if completing commands)
-            if let Some(buffer) = self.buffers.get(&self.active_buffer) {
+            if let Some(buffer) = self.state.buffers.get(&self.state.active_buffer) {
                 for u in &buffer.users {
                     if u.nick.starts_with(search_prefix) {
                         matches.push(format!("{}{}", keep_lead, u.nick.clone()));
@@ -357,7 +252,7 @@ impl SlircApp {
                 }
             }
             // also add channel names for messages starting with '#'
-            for b in &self.buffers_order {
+            for b in &self.state.buffers_order {
                 if b.starts_with(prefix) {
                     matches.push(b.clone());
                 }
@@ -469,17 +364,16 @@ impl SlircApp {
     fn process_single_event(&mut self, event: GuiEvent) {
         events::process_single_event(
             event,
-            &mut self.is_connected,
-            &mut self.buffers,
-            &mut self.buffers_order,
-            &mut self.active_buffer,
+            &mut self.state.is_connected,
+            &mut self.state.buffers,
+            &mut self.state.buffers_order,
+            &mut self.state.active_buffer,
             &mut self.nickname_input,
-            &mut self.system_log,
-            &mut self.expanded_networks,
-            &mut self.status_messages,
+            &mut self.state.system_log,
+            &mut self.state.expanded_networks,
+            &mut self.state.status_messages,
             &self.server_input,
-            &self.font_fallback,
-            &self.logger,
+            &self.state.logger,
         );
     }
 }
@@ -493,20 +387,7 @@ impl eframe::App for SlircApp {
         ctx.input(|i| {
             // Ctrl+N: Next channel
             if i.modifiers.ctrl && i.key_pressed(egui::Key::N) {
-                if let Some(current_idx) = self
-                    .buffers_order
-                    .iter()
-                    .position(|b| b == &self.active_buffer)
-                {
-                    let next_idx = (current_idx + 1) % self.buffers_order.len();
-                    if let Some(next_buffer) = self.buffers_order.get(next_idx) {
-                        self.active_buffer = next_buffer.clone();
-                        if let Some(buffer) = self.buffers.get_mut(next_buffer) {
-                            buffer.clear_unread();
-                            buffer.has_highlight = false;
-                        }
-                    }
-                }
+                self.state.next_buffer();
             }
             // Ctrl+K: Quick switcher (search overlay)
             if i.modifiers.ctrl && i.key_pressed(egui::Key::K) {
@@ -514,24 +395,7 @@ impl eframe::App for SlircApp {
             }
             // Ctrl+P: Previous channel
             if i.modifiers.ctrl && i.key_pressed(egui::Key::P) {
-                if let Some(current_idx) = self
-                    .buffers_order
-                    .iter()
-                    .position(|b| b == &self.active_buffer)
-                {
-                    let prev_idx = if current_idx == 0 {
-                        self.buffers_order.len() - 1
-                    } else {
-                        current_idx - 1
-                    };
-                    if let Some(prev_buffer) = self.buffers_order.get(prev_idx) {
-                        self.active_buffer = prev_buffer.clone();
-                        if let Some(buffer) = self.buffers.get_mut(prev_buffer) {
-                            buffer.clear_unread();
-                            buffer.has_highlight = false;
-                        }
-                    }
-                }
+                self.state.prev_buffer();
             }
             // F1: Toggle help dialog
             if i.key_pressed(egui::Key::F1) {
@@ -542,8 +406,7 @@ impl eframe::App for SlircApp {
         // Request repaint to keep checking for events
         ctx.request_repaint_after(Duration::from_millis(100));
         // Purge old status messages (toasts) older than 4 seconds
-        self.status_messages
-            .retain(|(_, t)| t.elapsed() < std::time::Duration::from_secs(4));
+        self.state.purge_old_status_messages(4);
 
         let theme = self.get_theme();
 
@@ -559,8 +422,8 @@ impl eframe::App for SlircApp {
                 if let Some(menu_action) = ui::menu::render_menu_bar(
                     ctx,
                     ui,
-                    self.is_connected,
-                    &self.active_buffer,
+                    self.state.is_connected,
+                    &self.state.active_buffer,
                     &mut self.show_channel_list,
                     &mut self.show_user_list,
                     &mut self.quick_switcher,
@@ -568,7 +431,7 @@ impl eframe::App for SlircApp {
                 ) {
                     match menu_action {
                         ui::menu::MenuAction::NetworkManager => {
-                            self.network_manager_dialog = Some(NetworkManagerDialog::new(self.networks.clone()));
+                            self.network_manager_dialog = Some(NetworkManagerDialog::new(self.state.networks.clone()));
                         }
                         ui::menu::MenuAction::Help => {
                             self.help_dialog.show();
@@ -599,7 +462,7 @@ impl eframe::App for SlircApp {
                     &mut self.server_input,
                     &mut self.nickname_input,
                     &mut self.channel_input,
-                    self.is_connected,
+                    self.state.is_connected,
                     &mut self.use_tls,
                     &self.action_tx,
                 ) {
@@ -615,14 +478,14 @@ impl eframe::App for SlircApp {
         if self.show_channel_list {
             ui::panels::render_channel_list(
                 ctx,
-                &self.buffers,
-                &self.buffers_order,
-                &mut self.active_buffer,
+                &self.state.buffers,
+                &self.state.buffers_order,
+                &mut self.state.active_buffer,
                 &mut self.context_menu_visible,
                 &mut self.context_menu_target,
             );
             // Clear unread after switching buffer
-            if let Some(buf) = self.buffers.get_mut(&self.active_buffer) {
+            if let Some(buf) = self.state.buffers.get_mut(&self.state.active_buffer) {
                 buf.clear_unread();
             }
         }
@@ -630,13 +493,13 @@ impl eframe::App for SlircApp {
 
         // Right panel: User list (for channels)
         if self.show_user_list
-            && (self.active_buffer.starts_with('#') || self.active_buffer.starts_with('&'))
+            && (self.state.active_buffer.starts_with('#') || self.state.active_buffer.starts_with('&'))
         {
-            if let Some(buffer) = self.buffers.get(&self.active_buffer) {
+            if let Some(buffer) = self.state.buffers.get(&self.state.active_buffer) {
                 ui::panels::render_user_list(
                     ctx,
                     buffer,
-                    &self.active_buffer,
+                    &self.state.active_buffer,
                     &self.nickname_input,
                     &mut self.context_menu_visible,
                     &mut self.context_menu_target,
@@ -774,27 +637,27 @@ impl eframe::App for SlircApp {
                     if self.message_input.starts_with('/') {
                         if commands::handle_user_command(
                             &self.message_input,
-                            &self.active_buffer,
-                            &self.buffers,
+                            &self.state.active_buffer,
+                            &self.state.buffers,
                             &self.action_tx,
-                            &mut self.system_log,
+                            &mut self.state.system_log,
                             &mut self.nickname_input,
                         ) {
                             self.history.push(self.message_input.clone());
                         }
                     } else {
                         // Normal message
-                        if self.is_connected {
-                            if self.active_buffer != "System" {
+                        if self.state.is_connected {
+                            if self.state.active_buffer != "System" {
                                 let _ = self.action_tx.send(BackendAction::SendMessage {
-                                    target: self.active_buffer.clone(),
+                                    target: self.state.active_buffer.clone(),
                                     text: self.message_input.clone(),
                                 });
                                 self.history.push(self.message_input.clone());
                             }
                         } else {
                             let ts = Local::now().format("%H:%M:%S").to_string();
-                            self.system_log
+                            self.state.system_log
                                 .push(format!("[{}] ⚠ Not connected: message not sent", ts));
                         }
                     }
@@ -822,14 +685,14 @@ impl eframe::App for SlircApp {
                 if let Some(msg_action) = ui::messages::render_messages(
                     ctx,
                     ui,
-                    &self.active_buffer,
-                    &self.buffers,
-                    &self.system_log,
+                    &self.state.active_buffer,
+                    &self.state.buffers,
+                    &self.state.system_log,
                     &self.nickname_input,
                 ) {
                     match msg_action {
                         ui::messages::MessagePanelAction::OpenTopicEditor(channel) => {
-                            let current_topic = self.buffers
+                            let current_topic = self.state.buffers
                                 .get(&channel)
                                 .map(|b| b.topic.clone())
                                 .unwrap_or_default();
@@ -850,11 +713,11 @@ impl eframe::App for SlircApp {
                         .show(ctx, |ui| {
                             if ui.button("Query (PM)").clicked() {
                                 // Create or switch to private message buffer
-                                if !self.buffers.contains_key(user) {
-                                    self.buffers.insert(user.to_string(), ChannelBuffer::new());
-                                    self.buffers_order.push(user.to_string());
+                                if !self.state.buffers.contains_key(user) {
+                                    self.state.buffers.insert(user.to_string(), ChannelBuffer::new());
+                                    self.state.buffers_order.push(user.to_string());
                                 }
-                                self.active_buffer = user.to_string();
+                                self.state.active_buffer = user.to_string();
                                 self.context_menu_visible = false;
                             }
                             if ui.button("Whois").clicked() {
@@ -865,12 +728,13 @@ impl eframe::App for SlircApp {
                                 self.context_menu_visible = false;
                             }
                             // Show op actions if we're an op in this channel
-                            if self.active_buffer.starts_with('#')
-                                || self.active_buffer.starts_with('&')
+                            if self.state.active_buffer.starts_with('#')
+                                || self.state.active_buffer.starts_with('&')
                             {
                                 let is_op = self
+                                    .state
                                     .buffers
-                                    .get(&self.active_buffer)
+                                    .get(&self.state.active_buffer)
                                     .map(|b| {
                                         b.users.iter().any(|u| {
                                             u.nick == self.nickname_input
@@ -883,7 +747,7 @@ impl eframe::App for SlircApp {
                                     ui.label("Op Actions:");
                                     if ui.button("Op (+o)").clicked() {
                                         let _ = self.action_tx.send(BackendAction::SetUserMode {
-                                            channel: self.active_buffer.clone(),
+                                            channel: self.state.active_buffer.clone(),
                                             nick: user.to_string(),
                                             mode: "+o".to_string(),
                                         });
@@ -891,7 +755,7 @@ impl eframe::App for SlircApp {
                                     }
                                     if ui.button("Deop (-o)").clicked() {
                                         let _ = self.action_tx.send(BackendAction::SetUserMode {
-                                            channel: self.active_buffer.clone(),
+                                            channel: self.state.active_buffer.clone(),
                                             nick: user.to_string(),
                                             mode: "-o".to_string(),
                                         });
@@ -899,7 +763,7 @@ impl eframe::App for SlircApp {
                                     }
                                     if ui.button("Voice (+v)").clicked() {
                                         let _ = self.action_tx.send(BackendAction::SetUserMode {
-                                            channel: self.active_buffer.clone(),
+                                            channel: self.state.active_buffer.clone(),
                                             nick: user.to_string(),
                                             mode: "+v".to_string(),
                                         });
@@ -907,7 +771,7 @@ impl eframe::App for SlircApp {
                                     }
                                     if ui.button("Devoice (-v)").clicked() {
                                         let _ = self.action_tx.send(BackendAction::SetUserMode {
-                                            channel: self.active_buffer.clone(),
+                                            channel: self.state.active_buffer.clone(),
                                             nick: user.to_string(),
                                             mode: "-v".to_string(),
                                         });
@@ -915,7 +779,7 @@ impl eframe::App for SlircApp {
                                     }
                                     if ui.button("Kick").clicked() {
                                         let _ = self.action_tx.send(BackendAction::Kick {
-                                            channel: self.active_buffer.clone(),
+                                            channel: self.state.active_buffer.clone(),
                                             nick: user.to_string(),
                                             reason: None,
                                         });
@@ -937,10 +801,10 @@ impl eframe::App for SlircApp {
                                 self.context_menu_visible = false;
                             }
                             if ui.button("Close").clicked() {
-                                self.buffers.remove(&target);
-                                self.buffers_order.retain(|b| b != &target);
-                                if self.active_buffer == target {
-                                    self.active_buffer = "System".into();
+                                self.state.buffers.remove(&target);
+                                self.state.buffers_order.retain(|b| b != &target);
+                                if self.state.active_buffer == target {
+                                    self.state.active_buffer = "System".into();
                                 }
                                 self.context_menu_visible = false;
                             }
@@ -967,7 +831,7 @@ impl eframe::App for SlircApp {
                         ui.heading(&open_name);
                     });
                     ui.separator();
-                    if let Some(buffer) = self.buffers.get(&open_name) {
+                    if let Some(buffer) = self.state.buffers.get(&open_name) {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for msg in &buffer.messages {
                                 // Check if this is a CTCP ACTION message using slirc_proto
@@ -1020,9 +884,9 @@ impl eframe::App for SlircApp {
         self.render_dialogs(ctx);
         
         // Quick switcher overlay (Ctrl+K)
-        if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.buffers) {
-            self.active_buffer = selected_buffer.clone();
-            if let Some(buffer) = self.buffers.get_mut(&selected_buffer) {
+        if let Some(selected_buffer) = self.quick_switcher.render(ctx, &self.state.buffers) {
+            self.state.active_buffer = selected_buffer.clone();
+            if let Some(buffer) = self.state.buffers.get_mut(&selected_buffer) {
                 buffer.clear_unread();
                 buffer.has_highlight = false;
             }
@@ -1034,7 +898,7 @@ impl SlircApp {
     /// Render all dialogs and handle their actions
     fn render_dialogs(&mut self, ctx: &egui::Context) {
         // Floating status toasts (top-right corner)
-        ui::dialogs::render_status_toasts(ctx, &self.status_messages);
+        ui::dialogs::render_status_toasts(ctx, &self.state.status_messages);
         
         // Help dialog (F1) - simple toggle, no actions
         self.help_dialog.render(ctx);
@@ -1110,7 +974,7 @@ impl SlircApp {
         if close_network_dialog {
             if save_networks {
                 if let Some(networks) = networks_to_save {
-                    self.networks = networks;
+                    self.state.networks = networks;
                     self.save_networks();
                 }
             }
@@ -1180,7 +1044,7 @@ impl Drop for SlircApp {
             default_channel: self.channel_input.clone(),
             history: self.history.clone(),
             theme: self.theme.clone(),
-            networks: self.networks.clone(),
+            networks: self.state.networks.clone(),
         };
         if let Err(e) = save_settings(&settings) {
             eprintln!("Failed to save settings: {}", e);

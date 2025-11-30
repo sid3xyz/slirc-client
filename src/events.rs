@@ -23,7 +23,6 @@ pub fn process_events(
     expanded_networks: &mut HashSet<String>,
     status_messages: &mut Vec<(String, std::time::Instant)>,
     server_input: &str,
-    font_fallback: &Option<String>,
     logger: &Option<Logger>,
 ) {
     // Drain all pending events from the backend
@@ -39,7 +38,6 @@ pub fn process_events(
             expanded_networks,
             status_messages,
             server_input,
-            font_fallback,
             logger,
         );
     }
@@ -58,7 +56,6 @@ pub fn process_single_event(
     expanded_networks: &mut HashSet<String>,
     status_messages: &mut Vec<(String, std::time::Instant)>,
     server_input: &str,
-    font_fallback: &Option<String>,
     logger: &Option<Logger>,
 ) {
     match event {
@@ -265,7 +262,7 @@ pub fn process_single_event(
             GuiEvent::Motd(line) => {
                 let ts = Local::now().format("%H:%M:%S").to_string();
                 // Clean up MOTD line formatting a bit for readability
-                let cleaned = clean_motd_line(&line, font_fallback);
+                let cleaned = clean_motd_line(&line);
                 if cleaned.is_empty() {
                     system_log.push(format!("[{}] MOTD:", ts));
                 } else {
@@ -361,8 +358,8 @@ fn ensure_buffer<'a>(
     buffers.get_mut(name).expect("Buffer should exist after insertion")
 }
 
-/// Clean MOTD line formatting.
-pub fn clean_motd_line(line: &str, font_fallback: &Option<String>) -> String {
+/// Clean MOTD line formatting (strips common prefixes).
+pub fn clean_motd_line(line: &str) -> String {
     let mut s = line.trim_start();
     if let Some(rest) = s.strip_prefix(":- ") {
         s = rest.trim_start();
@@ -373,12 +370,5 @@ pub fn clean_motd_line(line: &str, font_fallback: &Option<String>) -> String {
     } else if s == "-" {
         s = "";
     }
-    let mut s2 = s.to_string();
-    if font_fallback.is_none() {
-        s2 = s2
-            .replace(['═', '─'], "-")
-            .replace(['│', '║'], "|")
-            .replace(['┌', '┐', '└', '┘'], "+");
-    }
-    s2
+    s.to_string()
 }
