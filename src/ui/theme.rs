@@ -239,8 +239,21 @@ pub fn render_avatar(ui: &mut eframe::egui::Ui, nick: &str, size: f32) -> eframe
     let bg_color = nick_color(nick);
     let painter = ui.painter();
 
-    // Draw circle
+    // Draw subtle shadow for depth
+    let shadow_offset = eframe::egui::vec2(0.0, 1.5);
+    painter.circle_filled(
+        rect.center() + shadow_offset,
+        size / 2.0,
+        Color32::from_black_alpha(30),
+    );
+
+    // Draw circle with border
     painter.circle_filled(rect.center(), size / 2.0, bg_color);
+    painter.circle_stroke(
+        rect.center(),
+        size / 2.0,
+        eframe::egui::Stroke::new(1.5, Color32::from_white_alpha(15)),
+    );
 
     // Draw initials
     let initials: String = nick.chars().next().unwrap_or('?').to_uppercase().collect();

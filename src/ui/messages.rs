@@ -56,8 +56,9 @@ fn render_topic_bar(
         .frame(
             egui::Frame::new()
                 .fill(bg_color)
-                .inner_margin(egui::Margin::symmetric(16, 10))
-                .stroke(egui::Stroke::new(1.0, theme.border_medium)),
+                .inner_margin(egui::Margin::symmetric(20, 14))
+                .stroke(egui::Stroke::new(1.0, theme.border_medium))
+                .rounding(egui::Rounding::ZERO),
         )
         .show_inside(ui, |ui| {
             if let Some(buffer) = buffers.get(active_buffer) {
@@ -91,6 +92,14 @@ fn render_topic_bar(
                     topic_response.on_hover_text("Double-click to edit topic");
                 }
             }
+            
+            // Subtle separator line
+            ui.add_space(8.0);
+            let separator_rect = egui::Rect::from_min_size(
+                ui.cursor().min,
+                egui::vec2(ui.available_width(), 1.0),
+            );
+            ui.painter().rect_filled(separator_rect, 0.0, theme.surface[3]);
         });
 }
 
@@ -222,8 +231,8 @@ fn render_message_group(
     nickname: &str,
     theme: &SlircTheme,
 ) {
-    // Add spacing between groups
-    ui.add_space(16.0);
+    // Add spacing between groups (cozy layout)
+    ui.add_space(20.0);
 
     // Container for the message group with hover highlight
     let group_rect = ui.available_rect_before_wrap();
@@ -268,16 +277,31 @@ fn render_message_group(
             // Messages in this group
             for (i, msg) in group.messages.iter().enumerate() {
                 if i > 0 {
-                    ui.add_space(4.0);
+                    ui.add_space(2.0); // Tighter spacing within group
                 }
 
-                let mention = msg.text.contains(nickname);
-                render_message_content(ui, msg, buffer, mention, theme);
+                ui.horizontal(|ui| {
+                    // Message content
+                    ui.vertical(|ui| {
+                        let mention = msg.text.contains(nickname);
+                        render_message_content(ui, msg, buffer, mention, theme);
+                    });
+                    
+                    // Timestamp (faint, shown on hover)
+                    if i > 0 {
+                        let timestamp_response = ui.label(
+                            egui::RichText::new(&msg.timestamp)
+                                .size(10.0)
+                                .color(Color32::from_white_alpha(40)),
+                        );
+                        timestamp_response.on_hover_text(&msg.timestamp);
+                    }
+                });
             }
         });
     });
 
-    // Hover highlight effect
+    // Hover highlight effect with rounded corners
     if response.hovered() {
         let highlight_rect = egui::Rect::from_min_size(
             group_rect.min,
@@ -285,8 +309,8 @@ fn render_message_group(
         );
         ui.painter().rect_filled(
             highlight_rect,
-            0.0,
-            Color32::from_rgba_unmultiplied(255, 255, 255, 3),
+            4.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 8),
         );
     }
 }
@@ -328,13 +352,13 @@ fn render_message_content(
             });
         }
         MessageType::Normal => {
-            // Highlight background for mentions
+            // Highlight background for mentions with rounded corners
             if mention {
                 let rect = ui.available_rect_before_wrap();
                 ui.painter().rect_filled(
-                    egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 24.0)),
-                    4.0,
-                    Color32::from_rgba_unmultiplied(255, 180, 50, 25),
+                    egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 26.0)),
+                    6.0,
+                    Color32::from_rgba_unmultiplied(255, 180, 50, 35),
                 );
             }
 
