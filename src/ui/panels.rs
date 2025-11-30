@@ -345,7 +345,8 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, dark_mode: bool) -> (boo
     }
 
     // Status dot
-    let status_color = theme::prefix_color(user.prefix);
+    let theme_obj = theme::SlircTheme::dark(); // TODO: Get from app state
+    let status_color = theme::prefix_color(&theme_obj, user.prefix);
     let dot_center = egui::pos2(rect.min.x + 20.0, rect.center().y);
     ui.painter().circle_filled(dot_center, 4.0, status_color);
 

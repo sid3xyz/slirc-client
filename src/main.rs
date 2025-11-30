@@ -11,6 +11,7 @@ mod buffer;
 mod commands;
 mod config;
 mod events;
+mod fonts;
 mod logging;
 mod protocol;
 mod ui;
@@ -28,15 +29,25 @@ use eframe::egui;
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([900.0, 600.0])
-            .with_min_inner_size([400.0, 300.0]),
+            .with_inner_size([1280.0, 720.0])  // Modern default size
+            .with_min_inner_size([800.0, 600.0]),  // Minimum for 2.5-column layout
         ..Default::default()
     };
 
     eframe::run_native(
         "SLIRC - IRC Client",
         options,
-        Box::new(|cc| Ok(Box::new(SlircApp::new(cc)))),
+        Box::new(|cc| {
+            // Setup modern fonts (Inter + JetBrains Mono)
+            cc.egui_ctx.set_fonts(fonts::setup_fonts());
+            
+            // Setup modern text styles
+            cc.egui_ctx.all_styles_mut(|style| {
+                style.text_styles = ui::theme::configure_text_styles();
+            });
+            
+            Ok(Box::new(SlircApp::new(cc)))
+        }),
     )
 }
 

@@ -581,7 +581,7 @@ impl eframe::App for SlircApp {
                     } else {
                         egui::Color32::WHITE
                     })
-                    .corner_radius(egui::CornerRadius::same(ui::theme::spacing::INPUT_ROUNDING))
+                    .corner_radius(ui::theme::spacing::INPUT_ROUNDING)
                     .inner_margin(egui::Margin::symmetric(10, 8));
 
                 input_frame.show(ui, |ui| {
@@ -722,7 +722,7 @@ impl eframe::App for SlircApp {
             .frame(
                 egui::Frame::new()
                     .fill(chat_bg)
-                    .inner_margin(egui::Margin::same(ui::theme::spacing::PANEL_MARGIN)),
+                    .inner_margin(ui::theme::spacing::PANEL_MARGIN),
             )
             .show(ctx, |ui| {
             ui::messages::render_messages(

@@ -1,7 +1,156 @@
 //! Modern color themes and styling utilities for the IRC client.
-//! Inspired by Discord, Slack, and Element design patterns.
+//! Implements the design system from /docs/MODERN_UI_DESIGN_PLAN.md
+//! Inspired by Discord, Slack, and modern chat applications (2025 standards).
 
-use eframe::egui::Color32;
+use eframe::egui::{self, Color32, FontFamily, FontId, Style, TextStyle};
+use std::collections::BTreeMap;
+
+/// Modern theme with semantic color system (7-level surface hierarchy)
+#[derive(Clone, Debug)]
+pub struct SlircTheme {
+    pub name: String,
+    pub surface: [Color32; 7],
+    pub accent: Color32,
+    pub accent_hover: Color32,
+    pub accent_active: Color32,
+    pub success: Color32,
+    pub warning: Color32,
+    pub error: Color32,
+    pub info: Color32,
+    pub text_primary: Color32,
+    pub text_secondary: Color32,
+    pub text_muted: Color32,
+    pub text_disabled: Color32,
+    pub border_subtle: Color32,
+    pub border_medium: Color32,
+    pub border_strong: Color32,
+}
+
+impl SlircTheme {
+    /// Modern dark theme (Discord-inspired, 2025 standards)
+    pub fn dark() -> Self {
+        Self {
+            name: "Dark".to_string(),
+            surface: [
+                Color32::from_rgb(10, 10, 15),    // surface_0: App background
+                Color32::from_rgb(19, 19, 26),    // surface_1: Sidebar background
+                Color32::from_rgb(28, 28, 38),    // surface_2: Message background
+                Color32::from_rgb(37, 37, 50),    // surface_3: Hover state
+                Color32::from_rgb(46, 46, 62),    // surface_4: Active selection
+                Color32::from_rgb(56, 56, 74),    // surface_5: Elevated panels
+                Color32::from_rgb(66, 66, 86),    // surface_6: Modals/dialogs
+            ],
+            accent: Color32::from_rgb(88, 101, 242),
+            accent_hover: Color32::from_rgb(71, 82, 196),
+            accent_active: Color32::from_rgb(60, 69, 165),
+            success: Color32::from_rgb(67, 181, 129),
+            warning: Color32::from_rgb(250, 166, 26),
+            error: Color32::from_rgb(240, 71, 71),
+            info: Color32::from_rgb(0, 175, 244),
+            text_primary: Color32::WHITE,
+            text_secondary: Color32::from_rgb(185, 187, 190),
+            text_muted: Color32::from_rgb(114, 118, 125),
+            text_disabled: Color32::from_rgb(79, 84, 92),
+            border_subtle: Color32::from_rgb(32, 34, 37),
+            border_medium: Color32::from_rgb(47, 49, 54),
+            border_strong: Color32::from_rgb(64, 68, 75),
+        }
+    }
+
+    /// Modern light theme
+    pub fn light() -> Self {
+        Self {
+            name: "Light".to_string(),
+            surface: [
+                Color32::from_rgb(255, 255, 255), // surface_0: App background
+                Color32::from_rgb(246, 246, 247), // surface_1: Sidebar background
+                Color32::from_rgb(242, 243, 245), // surface_2: Message background
+                Color32::from_rgb(227, 229, 232), // surface_3: Hover state
+                Color32::from_rgb(212, 215, 220), // surface_4: Active selection
+                Color32::from_rgb(196, 201, 208), // surface_5: Elevated panels
+                Color32::from_rgb(181, 187, 196), // surface_6: Modals/dialogs
+            ],
+            accent: Color32::from_rgb(88, 101, 242),
+            accent_hover: Color32::from_rgb(71, 82, 196),
+            accent_active: Color32::from_rgb(60, 69, 165),
+            success: Color32::from_rgb(67, 181, 129),
+            warning: Color32::from_rgb(250, 166, 26),
+            error: Color32::from_rgb(240, 71, 71),
+            info: Color32::from_rgb(0, 175, 244),
+            text_primary: Color32::from_rgb(6, 6, 7),
+            text_secondary: Color32::from_rgb(79, 86, 96),
+            text_muted: Color32::from_rgb(116, 127, 141),
+            text_disabled: Color32::from_rgb(180, 187, 196),
+            border_subtle: Color32::from_rgb(230, 232, 236),
+            border_medium: Color32::from_rgb(210, 213, 219),
+            border_strong: Color32::from_rgb(180, 185, 192),
+        }
+    }
+
+    /// Apply theme to egui Style
+    pub fn apply_to_style(&self, style: &mut Style) {
+        let dark_mode = self.name == "Dark";
+        style.visuals.dark_mode = dark_mode;
+        style.visuals.override_text_color = Some(self.text_primary);
+        style.visuals.panel_fill = self.surface[1];
+        style.visuals.window_fill = self.surface[0];
+        style.visuals.extreme_bg_color = self.surface[0];
+        style.visuals.faint_bg_color = self.surface[2];
+
+        // Widget colors with modern states
+        style.visuals.widgets.noninteractive.bg_fill = self.surface[1];
+        style.visuals.widgets.noninteractive.weak_bg_fill = self.surface[0];
+        style.visuals.widgets.noninteractive.fg_stroke.color = self.text_secondary;
+
+        style.visuals.widgets.inactive.bg_fill = self.surface[2];
+        style.visuals.widgets.inactive.weak_bg_fill = self.surface[1];
+        style.visuals.widgets.inactive.fg_stroke.color = self.text_secondary;
+
+        style.visuals.widgets.hovered.bg_fill = self.surface[3];
+        style.visuals.widgets.hovered.weak_bg_fill = self.surface[2];
+        style.visuals.widgets.hovered.fg_stroke.color = self.text_primary;
+
+        style.visuals.widgets.active.bg_fill = self.surface[4];
+        style.visuals.widgets.active.weak_bg_fill = self.surface[3];
+        style.visuals.widgets.active.fg_stroke.color = self.accent;
+
+        // Selection
+        style.visuals.selection.bg_fill = self.accent.linear_multiply(0.3);
+        style.visuals.selection.stroke.color = self.accent;
+
+        // Hyperlinks
+        style.visuals.hyperlink_color = self.info;
+
+        // Spacing (8pt grid system)
+        style.spacing.item_spacing = [8.0, 8.0].into();
+        style.spacing.button_padding = [12.0, 6.0].into();
+        style.spacing.indent = 20.0;
+        style.spacing.scroll.bar_width = 8.0;
+        style.spacing.scroll.bar_inner_margin = 2.0;
+        style.spacing.scroll.bar_outer_margin = 0.0;
+    }
+}
+
+/// Configure modern text styles (16px base font, proper hierarchy)
+pub fn configure_text_styles() -> BTreeMap<TextStyle, FontId> {
+    use FontFamily::{Monospace, Proportional};
+    
+    [
+        (TextStyle::Small, FontId::new(10.0, Proportional)),
+        (TextStyle::Body, FontId::new(14.0, Proportional)),
+        (TextStyle::Button, FontId::new(13.0, Proportional)),
+        (TextStyle::Heading, FontId::new(16.0, Proportional)),
+        (TextStyle::Monospace, FontId::new(13.0, Monospace)),
+        // IRC-specific custom styles
+        (TextStyle::Name("irc_message".into()), FontId::new(14.0, Monospace)),
+        (TextStyle::Name("irc_timestamp".into()), FontId::new(11.0, Monospace)),
+        (TextStyle::Name("irc_nick".into()), FontId::new(13.0, Proportional)),
+        (TextStyle::Name("topic".into()), FontId::new(12.0, Proportional)),
+        (TextStyle::Name("section_header".into()), FontId::new(11.0, Proportional)),
+        (TextStyle::Name("channel_name".into()), FontId::new(14.0, Proportional)),
+    ]
+    .into()
+}
 
 /// Modern nick color palette - 16 vibrant, accessible colors
 const NICK_COLORS: [Color32; 16] = [
@@ -48,15 +197,15 @@ pub fn prefix_rank(prefix: Option<char>) -> u8 {
 }
 
 /// Color for user prefix/status indicator
-pub fn prefix_color(prefix: Option<char>) -> Color32 {
+pub fn prefix_color(theme: &SlircTheme, prefix: Option<char>) -> Color32 {
     match prefix {
-        Some('@') | Some('~') | Some('&') => Color32::from_rgb(67, 181, 129),  // Green for ops
-        Some('+') | Some('%') => Color32::from_rgb(250, 166, 26),               // Orange for voice
-        _ => Color32::from_rgb(116, 127, 141),                                  // Gray for regular
+        Some('@') | Some('~') | Some('&') => theme.success,  // Green for ops
+        Some('+') | Some('%') => theme.warning,               // Orange for voice
+        _ => theme.text_muted,                                // Gray for regular
     }
 }
 
-/// Standard mIRC color palette
+/// Standard mIRC color palette (legacy support)
 pub const MIRC_COLORS: [Color32; 16] = [
     Color32::from_rgb(255, 255, 255),
     Color32::from_rgb(0, 0, 0),
@@ -80,65 +229,52 @@ pub fn mirc_color(code: u8) -> Color32 {
     MIRC_COLORS.get(code as usize).copied().unwrap_or(Color32::WHITE)
 }
 
-/// Modern dark theme palette (Discord-inspired)
+// Legacy compatibility modules - deprecated, use SlircTheme instead
+#[deprecated(note = "Use SlircTheme::dark() instead")]
 pub mod dark {
     use super::Color32;
-
-    // Layered backgrounds for depth
-    pub const BG_DARKEST: Color32 = Color32::from_rgb(18, 18, 23);
-    pub const BG_DARKER: Color32 = Color32::from_rgb(24, 25, 31);
-    pub const BG_DARK: Color32 = Color32::from_rgb(32, 34, 41);
-    pub const BG_BASE: Color32 = Color32::from_rgb(40, 43, 52);
-    pub const BG_ELEVATED: Color32 = Color32::from_rgb(50, 54, 65);
-    pub const BG_HOVER: Color32 = Color32::from_rgb(58, 62, 75);
-    pub const BG_ACTIVE: Color32 = Color32::from_rgb(66, 71, 86);
-
-    // Text hierarchy
-    pub const TEXT_NORMAL: Color32 = Color32::from_rgb(220, 221, 225);
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(148, 155, 164);
-    pub const TEXT_FAINT: Color32 = Color32::from_rgb(96, 102, 112);
-
-    // Accent colors
+    pub const BG_DARKEST: Color32 = Color32::from_rgb(10, 10, 15);
+    pub const BG_DARKER: Color32 = Color32::from_rgb(19, 19, 26);
+    pub const BG_DARK: Color32 = Color32::from_rgb(28, 28, 38);
+    pub const BG_BASE: Color32 = Color32::from_rgb(37, 37, 50);
+    pub const BG_ELEVATED: Color32 = Color32::from_rgb(46, 46, 62);
+    pub const BG_HOVER: Color32 = Color32::from_rgb(56, 56, 74);
+    pub const BG_ACTIVE: Color32 = Color32::from_rgb(66, 66, 86);
+    pub const TEXT_NORMAL: Color32 = Color32::WHITE;
+    pub const TEXT_MUTED: Color32 = Color32::from_rgb(185, 187, 190);
+    pub const TEXT_FAINT: Color32 = Color32::from_rgb(114, 118, 125);
     pub const ACCENT_BLUE: Color32 = Color32::from_rgb(88, 101, 242);
     pub const ACCENT_GREEN: Color32 = Color32::from_rgb(67, 181, 129);
     pub const ACCENT_YELLOW: Color32 = Color32::from_rgb(250, 166, 26);
-    pub const ACCENT_RED: Color32 = Color32::from_rgb(237, 66, 69);
+    pub const ACCENT_RED: Color32 = Color32::from_rgb(240, 71, 71);
     pub const ACCENT_PINK: Color32 = Color32::from_rgb(235, 69, 158);
-
-    // UI elements
-    pub const BORDER: Color32 = Color32::from_rgb(55, 58, 70);
-    pub const SCROLLBAR: Color32 = Color32::from_rgb(60, 64, 76);
-    pub const SCROLLBAR_HOVER: Color32 = Color32::from_rgb(75, 80, 95);
+    pub const BORDER: Color32 = Color32::from_rgb(47, 49, 54);
+    pub const SCROLLBAR: Color32 = Color32::from_rgb(56, 56, 74);
+    pub const SCROLLBAR_HOVER: Color32 = Color32::from_rgb(66, 66, 86);
 }
 
-/// Modern light theme palette
+#[deprecated(note = "Use SlircTheme::light() instead")]
 pub mod light {
     use super::Color32;
-
-    pub const BG_DARKEST: Color32 = Color32::from_rgb(220, 222, 228);
-    pub const BG_DARKER: Color32 = Color32::from_rgb(235, 237, 242);
-    pub const BG_DARK: Color32 = Color32::from_rgb(242, 243, 247);
+    pub const BG_DARKEST: Color32 = Color32::from_rgb(212, 215, 220);
+    pub const BG_DARKER: Color32 = Color32::from_rgb(227, 229, 232);
+    pub const BG_DARK: Color32 = Color32::from_rgb(242, 243, 245);
     pub const BG_BASE: Color32 = Color32::from_rgb(255, 255, 255);
-    pub const BG_ELEVATED: Color32 = Color32::from_rgb(248, 249, 252);
-    pub const BG_HOVER: Color32 = Color32::from_rgb(240, 241, 245);
-    pub const BG_ACTIVE: Color32 = Color32::from_rgb(230, 232, 238);
-
-    pub const TEXT_NORMAL: Color32 = Color32::from_rgb(30, 31, 34);
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(80, 85, 95);
-    pub const TEXT_FAINT: Color32 = Color32::from_rgb(130, 135, 145);
-
-    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(66, 82, 210);
-    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(45, 155, 100);
-    pub const ACCENT_RED: Color32 = Color32::from_rgb(210, 55, 60);
-
-    pub const BORDER: Color32 = Color32::from_rgb(210, 212, 220);
-    pub const SCROLLBAR: Color32 = Color32::from_rgb(190, 195, 205);
+    pub const BG_ELEVATED: Color32 = Color32::from_rgb(246, 246, 247);
+    pub const BG_HOVER: Color32 = Color32::from_rgb(227, 229, 232);
+    pub const BG_ACTIVE: Color32 = Color32::from_rgb(212, 215, 220);
+    pub const TEXT_NORMAL: Color32 = Color32::from_rgb(6, 6, 7);
+    pub const TEXT_MUTED: Color32 = Color32::from_rgb(79, 86, 96);
+    pub const TEXT_FAINT: Color32 = Color32::from_rgb(116, 127, 141);
+    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(88, 101, 242);
+    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(67, 181, 129);
+    pub const ACCENT_RED: Color32 = Color32::from_rgb(240, 71, 71);
+    pub const BORDER: Color32 = Color32::from_rgb(210, 213, 219);
+    pub const SCROLLBAR: Color32 = Color32::from_rgb(196, 201, 208);
 }
 
-/// Message type colors - context-aware
 pub mod msg_colors {
     use super::Color32;
-
     pub const TIMESTAMP: Color32 = Color32::from_rgb(116, 127, 141);
     pub const JOIN: Color32 = Color32::from_rgb(67, 181, 129);
     pub const PART: Color32 = Color32::from_rgb(148, 155, 164);
@@ -151,66 +287,58 @@ pub mod msg_colors {
     pub const SYSTEM: Color32 = Color32::from_rgb(116, 127, 141);
 }
 
-/// Panel background colors with proper depth hierarchy
+#[deprecated(note = "Use SlircTheme methods instead")]
 pub mod panel_colors {
     use super::{dark, light, Color32};
-
     pub fn sidebar_bg(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BG_DARKER } else { light::BG_DARKER }
     }
-
     pub fn chat_bg(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BG_DARK } else { light::BG_BASE }
     }
-
     pub fn input_bg(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BG_BASE } else { light::BG_ELEVATED }
     }
-
     pub fn input_field_bg(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BG_ELEVATED } else { light::BG_BASE }
     }
-
     pub fn hover_bg(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BG_HOVER } else { light::BG_HOVER }
     }
-
     pub fn active_bg(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BG_ACTIVE } else { light::BG_ACTIVE }
     }
-
     pub fn separator(dark_mode: bool) -> Color32 {
         if dark_mode { dark::BORDER } else { light::BORDER }
     }
-
     pub fn focus_border(_dark_mode: bool) -> Color32 {
         dark::ACCENT_BLUE
     }
 }
 
-/// Text colors with proper hierarchy
+#[deprecated(note = "Use SlircTheme methods instead")]
 pub mod text_colors {
     use super::{dark, light, Color32};
-
     pub fn primary(dark_mode: bool) -> Color32 {
         if dark_mode { dark::TEXT_NORMAL } else { light::TEXT_NORMAL }
     }
-
     pub fn secondary(dark_mode: bool) -> Color32 {
         if dark_mode { dark::TEXT_MUTED } else { light::TEXT_MUTED }
     }
-
+    pub fn faint(dark_mode: bool) -> Color32 {
+        if dark_mode { dark::TEXT_FAINT } else { light::TEXT_FAINT }
+    }
     pub fn muted(dark_mode: bool) -> Color32 {
         if dark_mode { dark::TEXT_FAINT } else { light::TEXT_FAINT }
     }
 }
 
-/// Global spacing constants for consistent UI rhythm
+/// Global spacing constants for consistent UI rhythm (8pt grid system)
 pub mod spacing {
     /// Space between messages from different users
     pub const MESSAGE_GROUP_SPACING: f32 = 16.0;
     /// Space between consecutive messages from same user
-    pub const MESSAGE_CONTINUATION_SPACING: f32 = 2.0;
+    pub const MESSAGE_CONTINUATION_SPACING: f32 = 4.0;
     /// General item spacing
     pub const MESSAGE_SPACING_Y: f32 = 4.0;
     /// Channel list item height
@@ -218,15 +346,15 @@ pub mod spacing {
     /// User list item height
     pub const USER_ITEM_HEIGHT: f32 = 28.0;
     /// Panel margin
-    pub const PANEL_MARGIN: i8 = 12;
+    pub const PANEL_MARGIN: f32 = 12.0;
     /// Input field corner rounding
-    pub const INPUT_ROUNDING: u8 = 8;
+    pub const INPUT_ROUNDING: f32 = 8.0;
     /// General corner rounding
-    pub const CORNER_RADIUS: f32 = 6.0;
-    /// Avatar size
+    pub const CORNER_RADIUS: f32 = 4.0;
+    /// Avatar size (main chat)
     pub const AVATAR_SIZE: f32 = 36.0;
-    /// Small avatar size (user list)
-    pub const AVATAR_SIZE_SMALL: f32 = 8.0;
+    /// Small status dot (user list)
+    pub const STATUS_DOT_SIZE: f32 = 8.0;
 }
 
 /// Render a circular avatar with user initials
@@ -258,29 +386,33 @@ pub fn render_avatar(ui: &mut eframe::egui::Ui, nick: &str, size: f32) -> eframe
 }
 
 /// Render a small status dot for user list
-pub fn render_status_dot(ui: &mut eframe::egui::Ui, prefix: Option<char>) -> eframe::egui::Response {
-    let size = spacing::AVATAR_SIZE_SMALL;
+pub fn render_status_dot(
+    ui: &mut eframe::egui::Ui,
+    theme: &SlircTheme,
+    prefix: Option<char>,
+) -> eframe::egui::Response {
+    let size = spacing::STATUS_DOT_SIZE;
     let (rect, response) = ui.allocate_exact_size(
         eframe::egui::vec2(size, size),
         eframe::egui::Sense::hover(),
     );
 
-    let color = prefix_color(prefix);
+    let color = prefix_color(theme, prefix);
     ui.painter().circle_filled(rect.center(), size / 2.0, color);
 
     response
 }
 
 /// Render unread badge
-pub fn render_unread_badge(ui: &mut eframe::egui::Ui, count: usize, has_mention: bool) {
+pub fn render_unread_badge(ui: &mut eframe::egui::Ui, theme: &SlircTheme, count: usize, has_mention: bool) {
     if count == 0 {
         return;
     }
 
     let (bg, fg) = if has_mention {
-        (dark::ACCENT_RED, Color32::WHITE)
+        (theme.error, Color32::WHITE)
     } else {
-        (dark::ACCENT_BLUE, Color32::WHITE)
+        (theme.accent, Color32::WHITE)
     };
 
     let text = if count > 99 {
@@ -290,7 +422,7 @@ pub fn render_unread_badge(ui: &mut eframe::egui::Ui, count: usize, has_mention:
     };
 
     let font_id = eframe::egui::FontId::new(10.0, eframe::egui::FontFamily::Proportional);
-    let galley = ui.fonts(|f| f.layout_no_wrap(text, font_id, fg));
+    let galley = ui.fonts(|f| f.layout_no_wrap(text.clone(), font_id.clone(), fg));
 
     let padding = 4.0;
     let min_width = 18.0;
@@ -328,5 +460,16 @@ mod tests {
         assert!(prefix_rank(Some('~')) > prefix_rank(Some('@')));
         assert!(prefix_rank(Some('@')) > prefix_rank(Some('+')));
         assert!(prefix_rank(Some('+')) > prefix_rank(None));
+    }
+
+    #[test]
+    fn test_theme_creation() {
+        let dark = SlircTheme::dark();
+        assert_eq!(dark.name, "Dark");
+        assert_eq!(dark.surface.len(), 7);
+        
+        let light = SlircTheme::light();
+        assert_eq!(light.name, "Light");
+        assert_eq!(light.surface.len(), 7);
     }
 }
