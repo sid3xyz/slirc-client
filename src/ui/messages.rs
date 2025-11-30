@@ -4,7 +4,7 @@
 use eframe::egui::{self, Color32};
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
-use crate::ui::theme::{self, dark, panel_colors, spacing, text_colors};
+use crate::ui::theme::{self, SlircTheme};
 
 /// Render the central message panel with topic bar and message list.
 pub fn render_messages(
@@ -17,10 +17,11 @@ pub fn render_messages(
     topic_editor_open: &mut Option<String>,
 ) {
     let dark_mode = ui.style().visuals.dark_mode;
+    let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
 
     // Topic bar - modern style with subtle background
     if active_buffer != "System" {
-        render_topic_bar(ui, active_buffer, buffers, nickname, topic_editor_open, dark_mode);
+        render_topic_bar(ui, active_buffer, buffers, nickname, topic_editor_open, &theme);
     }
 
     // Messages area with improved styling
@@ -31,9 +32,9 @@ pub fn render_messages(
             ui.add_space(8.0);
 
             if active_buffer == "System" {
-                render_system_log(ui, system_log, dark_mode);
+                render_system_log(ui, system_log, &theme);
             } else if let Some(buffer) = buffers.get(active_buffer) {
-                render_grouped_messages(ui, buffer, nickname, dark_mode);
+                render_grouped_messages(ui, buffer, nickname, &theme);
             }
 
             ui.add_space(8.0);
@@ -47,20 +48,16 @@ fn render_topic_bar(
     buffers: &std::collections::HashMap<String, ChannelBuffer>,
     nickname: &str,
     topic_editor_open: &mut Option<String>,
-    dark_mode: bool,
+    theme: &SlircTheme,
 ) {
-    let bg_color = if dark_mode {
-        dark::BG_BASE
-    } else {
-        Color32::from_rgb(248, 249, 252)
-    };
+    let bg_color = theme.surface[2];
 
     egui::TopBottomPanel::top("topic_bar")
         .frame(
             egui::Frame::new()
                 .fill(bg_color)
                 .inner_margin(egui::Margin::symmetric(16, 10))
-                .stroke(egui::Stroke::new(1.0, panel_colors::separator(dark_mode))),
+                .stroke(egui::Stroke::new(1.0, theme.border_medium)),
         )
         .show_inside(ui, |ui| {
             if let Some(buffer) = buffers.get(active_buffer) {
@@ -78,8 +75,7 @@ fn render_topic_bar(
                     egui::Label::new(
                         egui::RichText::new(topic_text)
                             .size(13.0)
-                            .color(text_colors::secondary(dark_mode)),
-                    )
+                            .color(theme.text_secondary))
                     .wrap()
                     .sense(if is_op {
                         egui::Sense::click()
@@ -99,14 +95,14 @@ fn render_topic_bar(
 }
 
 /// Render system log with modern styling
-fn render_system_log(ui: &mut egui::Ui, system_log: &[String], dark_mode: bool) {
+fn render_system_log(ui: &mut egui::Ui, system_log: &[String], theme: &SlircTheme) {
     for line in system_log {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
             ui.label(
                 egui::RichText::new(line)
                     .size(13.0)
-                    .color(text_colors::muted(dark_mode)),
+                    .color(theme.text_muted),
             );
         });
         ui.add_space(2.0);
@@ -169,30 +165,30 @@ fn render_grouped_messages(
     ui: &mut egui::Ui,
     buffer: &ChannelBuffer,
     nickname: &str,
-    dark_mode: bool,
+    theme: &SlircTheme,
 ) {
     let groups = group_messages(&buffer.messages);
 
     for group in groups {
         if group.is_system {
             // Render system message (join/part/etc) compactly
-            render_system_message(ui, group.messages[0], dark_mode);
+            render_system_message(ui, group.messages[0], theme);
         } else {
             // Render message group with avatar
-            render_message_group(ui, &group, buffer, nickname, dark_mode);
+            render_message_group(ui, &group, buffer, nickname, theme);
         }
     }
 }
 
 /// Render a system message (join, part, quit, etc.)
-fn render_system_message(ui: &mut egui::Ui, msg: &RenderedMessage, dark_mode: bool) {
+fn render_system_message(ui: &mut egui::Ui, msg: &RenderedMessage, theme: &SlircTheme) {
     let (icon, color, text) = match &msg.msg_type {
-        MessageType::Join => ("→", theme::msg_colors::JOIN, format!("{} joined the channel", msg.sender)),
-        MessageType::Part => ("←", theme::msg_colors::PART, format!("{} left the channel", msg.sender)),
-        MessageType::Quit => ("✕", theme::msg_colors::PART, format!("{} quit: {}", msg.sender, msg.text)),
-        MessageType::NickChange => ("~", dark::ACCENT_BLUE, format!("{} {}", msg.sender, msg.text)),
-        MessageType::Topic => ("★", theme::msg_colors::TOPIC, msg.text.clone()),
-        _ => ("•", text_colors::muted(dark_mode), msg.text.clone()),
+        MessageType::Join => ("→", theme.success, format!("{} joined the channel", msg.sender)),
+        MessageType::Part => ("←", theme.text_muted, format!("{} left the channel", msg.sender)),
+        MessageType::Quit => ("✕", theme.text_muted, format!("{} quit: {}", msg.sender, msg.text)),
+        MessageType::NickChange => ("~", theme.info, format!("{} {}", msg.sender, msg.text)),
+        MessageType::Topic => ("★", theme.info, msg.text.clone()),
+        _ => ("•", theme.text_muted, msg.text.clone()),
     };
 
     ui.add_space(4.0);
@@ -206,13 +202,13 @@ fn render_system_message(ui: &mut egui::Ui, msg: &RenderedMessage, dark_mode: bo
         ui.label(
             egui::RichText::new(&text)
                 .size(12.0)
-                .color(text_colors::muted(dark_mode))
+                .color(theme.text_muted)
                 .italics(),
         );
         ui.label(
             egui::RichText::new(&msg.timestamp)
                 .size(10.0)
-                .color(text_colors::muted(dark_mode)),
+                .color(theme.text_muted),
         );
     });
     ui.add_space(4.0);
@@ -224,10 +220,10 @@ fn render_message_group(
     group: &MessageGroup<'_>,
     buffer: &ChannelBuffer,
     nickname: &str,
-    dark_mode: bool,
+    theme: &SlircTheme,
 ) {
     // Add spacing between groups
-    ui.add_space(spacing::MESSAGE_GROUP_SPACING);
+    ui.add_space(16.0);
 
     // Container for the message group with hover highlight
     let group_rect = ui.available_rect_before_wrap();
@@ -240,7 +236,7 @@ fn render_message_group(
         ui.add_space(12.0);
 
         // Avatar
-        theme::render_avatar(ui, group.sender, spacing::AVATAR_SIZE);
+        theme::render_avatar(ui, group.sender, 36.0);
 
         ui.add_space(12.0);
 
@@ -263,7 +259,7 @@ fn render_message_group(
                 ui.label(
                     egui::RichText::new(group.first_timestamp)
                         .size(11.0)
-                        .color(text_colors::muted(dark_mode)),
+                        .color(theme.text_muted),
                 );
             });
 
@@ -272,11 +268,11 @@ fn render_message_group(
             // Messages in this group
             for (i, msg) in group.messages.iter().enumerate() {
                 if i > 0 {
-                    ui.add_space(spacing::MESSAGE_CONTINUATION_SPACING);
+                    ui.add_space(4.0);
                 }
 
                 let mention = msg.text.contains(nickname);
-                render_message_content(ui, msg, buffer, mention, dark_mode);
+                render_message_content(ui, msg, buffer, mention, theme);
             }
         });
     });
@@ -301,7 +297,7 @@ fn render_message_content(
     msg: &RenderedMessage,
     buffer: &ChannelBuffer,
     mention: bool,
-    dark_mode: bool,
+    theme: &SlircTheme,
 ) {
     match &msg.msg_type {
         MessageType::Action => {
@@ -313,7 +309,7 @@ fn render_message_content(
             ui.label(
                 egui::RichText::new(action)
                     .size(14.0)
-                    .color(theme::msg_colors::ACTION)
+                    .color(theme.accent)
                     .italics(),
             );
         }
@@ -322,12 +318,12 @@ fn render_message_content(
                 ui.label(
                     egui::RichText::new("[Notice]")
                         .size(12.0)
-                        .color(theme::msg_colors::NOTICE),
+                        .color(theme.warning),
                 );
                 ui.label(
                     egui::RichText::new(&msg.text)
                         .size(14.0)
-                        .color(theme::msg_colors::NOTICE_TEXT),
+                        .color(theme.text_secondary),
                 );
             });
         }
@@ -342,13 +338,13 @@ fn render_message_content(
                 );
             }
 
-            render_message_text(ui, buffer, &msg.text, mention, dark_mode);
+            render_message_text(ui, buffer, &msg.text, mention, theme);
         }
         _ => {
             ui.label(
                 egui::RichText::new(&msg.text)
                     .size(14.0)
-                    .color(text_colors::primary(dark_mode)),
+                    .color(theme.text_primary),
             );
         }
     }
@@ -360,7 +356,7 @@ fn render_message_text(
     buffer: &ChannelBuffer,
     text: &str,
     mention: bool,
-    dark_mode: bool,
+    theme: &SlircTheme,
 ) {
     use once_cell::sync::Lazy;
     use regex::Regex;
@@ -370,9 +366,9 @@ fn render_message_text(
     });
 
     let base_color = if mention {
-        theme::msg_colors::HIGHLIGHT
+        Color32::from_rgb(255, 210, 100)
     } else {
-        text_colors::primary(dark_mode)
+        theme.text_primary
     };
 
     // Parse IRC formatting codes
@@ -387,7 +383,7 @@ fn render_message_text(
                 if URL_RE.is_match(word.trim()) {
                     let url = word.trim();
                     ui.hyperlink_to(
-                        egui::RichText::new(url).size(14.0).color(dark::ACCENT_BLUE),
+                        egui::RichText::new(url).size(14.0).color(theme.info),
                         url,
                     );
                     if word.ends_with(char::is_whitespace) {

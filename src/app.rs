@@ -75,6 +75,14 @@ pub struct SlircApp {
 }
 
 impl SlircApp {
+    /// Get the current theme based on the theme string ("dark" or "light")
+    fn get_theme(&self) -> ui::theme::SlircTheme {
+        match self.theme.as_str() {
+            "light" => ui::theme::SlircTheme::light(),
+            _ => ui::theme::SlircTheme::dark(),
+        }
+    }
+
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Create channels for UI <-> Backend
         let (action_tx, action_rx) = unbounded::<BackendAction>();
@@ -489,11 +497,8 @@ impl eframe::App for SlircApp {
             .retain(|(_, t)| t.elapsed() < std::time::Duration::from_secs(4));
 
         let dark_mode = ctx.style().visuals.dark_mode;
-        let toolbar_bg = if dark_mode {
-            egui::Color32::from_rgb(32, 34, 40)
-        } else {
-            egui::Color32::from_rgb(245, 246, 250)
-        };
+        let theme = self.get_theme();
+        let toolbar_bg = theme.surface[1];
 
         // Single compact toolbar (HexChat style - no separate menu bar)
         egui::TopBottomPanel::top("toolbar")
@@ -503,7 +508,7 @@ impl eframe::App for SlircApp {
                     .inner_margin(egui::Margin::symmetric(12, 8))
                     .stroke(egui::Stroke::new(
                         1.0,
-                        ui::theme::panel_colors::separator(dark_mode),
+                        theme.border_medium,
                     )),
             )
             .show(ctx, |ui| {
@@ -559,8 +564,9 @@ impl eframe::App for SlircApp {
 
         // Bottom panel: Message input with polished styling
         let dark_mode = ctx.style().visuals.dark_mode;
-        let input_bg = ui::theme::panel_colors::input_bg(dark_mode);
-        let _focus_border = ui::theme::panel_colors::focus_border(dark_mode);
+        let theme = self.get_theme();
+        let input_bg = theme.surface[1];
+        let _focus_border = theme.accent;
 
         egui::TopBottomPanel::bottom("input_panel")
             .frame(
@@ -569,7 +575,7 @@ impl eframe::App for SlircApp {
                     .inner_margin(egui::Margin::symmetric(12, 10))
                     .stroke(egui::Stroke::new(
                         1.0,
-                        ui::theme::panel_colors::separator(dark_mode),
+                        theme.border_medium,
                     )),
             )
             .show(ctx, |ui| {
@@ -581,7 +587,7 @@ impl eframe::App for SlircApp {
                     } else {
                         egui::Color32::WHITE
                     })
-                    .corner_radius(ui::theme::spacing::INPUT_ROUNDING)
+                    .corner_radius(6.0)
                     .inner_margin(egui::Margin::symmetric(10, 8));
 
                 input_frame.show(ui, |ui| {
@@ -717,12 +723,13 @@ impl eframe::App for SlircApp {
         });
 
         // Central panel: Messages with dedicated topic bar and styled background
-        let chat_bg = ui::theme::panel_colors::chat_bg(dark_mode);
+        let theme = self.get_theme();
+        let chat_bg = theme.surface[2];
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(chat_bg)
-                    .inner_margin(ui::theme::spacing::PANEL_MARGIN),
+                    .inner_margin(12.0),
             )
             .show(ctx, |ui| {
             ui::messages::render_messages(

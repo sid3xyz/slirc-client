@@ -7,7 +7,7 @@ use eframe::egui::{self, Color32, Stroke};
 
 use crate::buffer::ChannelBuffer;
 use crate::protocol::UserInfo;
-use crate::ui::theme::{self, dark, panel_colors, spacing, text_colors};
+use crate::ui::theme::{self, SlircTheme};
 
 /// Render the left channel list panel.
 pub fn render_channel_list(
@@ -19,7 +19,8 @@ pub fn render_channel_list(
     context_menu_target: &mut Option<String>,
 ) {
     let dark_mode = ctx.style().visuals.dark_mode;
-    let sidebar_bg = panel_colors::sidebar_bg(dark_mode);
+    let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
+    let sidebar_bg = theme.surface[1];
 
     egui::SidePanel::left("buffers_panel")
         .resizable(true)
@@ -29,7 +30,7 @@ pub fn render_channel_list(
             egui::Frame::new()
                 .fill(sidebar_bg)
                 .inner_margin(egui::Margin::same(0))
-                .stroke(Stroke::new(1.0, panel_colors::separator(dark_mode))),
+                .stroke(Stroke::new(1.0, theme.border_medium)),
         )
         .show(ctx, |ui| {
             // Header
@@ -40,7 +41,7 @@ pub fn render_channel_list(
                     egui::RichText::new("CHANNELS")
                         .size(11.0)
                         .strong()
-                        .color(text_colors::muted(dark_mode)),
+                        .color(theme.text_muted),
                 );
             });
             ui.add_space(8.0);
@@ -57,7 +58,7 @@ pub fn render_channel_list(
                             ui.label(
                                 egui::RichText::new("No channels yet")
                                     .size(12.0)
-                                    .color(text_colors::muted(dark_mode))
+                                    .color(theme.text_muted)
                                     .italics(),
                             );
                         });
@@ -67,7 +68,7 @@ pub fn render_channel_list(
                             ui.label(
                                 egui::RichText::new("Join one using the toolbar")
                                     .size(11.0)
-                                    .color(text_colors::muted(dark_mode)),
+                                    .color(theme.text_muted),
                             );
                         });
                     }
@@ -85,7 +86,7 @@ pub fn render_channel_list(
                             unread,
                             has_highlight,
                             selected,
-                            dark_mode,
+                            &theme,
                         );
 
                         if clicked.0 {
@@ -108,9 +109,9 @@ fn render_channel_item(
     unread: usize,
     has_highlight: bool,
     selected: bool,
-    dark_mode: bool,
+    theme: &SlircTheme,
 ) -> (bool, bool) {
-    let height = spacing::CHANNEL_ITEM_HEIGHT;
+    let height = 32.0;
     let available_width = ui.available_width();
 
     let (rect, response) = ui.allocate_exact_size(
@@ -122,9 +123,9 @@ fn render_channel_item(
 
     // Background color
     let bg_color = if selected {
-        panel_colors::active_bg(dark_mode)
+        theme.surface[4]
     } else if hovered {
-        panel_colors::hover_bg(dark_mode)
+        theme.surface[3]
     } else {
         Color32::TRANSPARENT
     };
@@ -140,7 +141,7 @@ fn render_channel_item(
             rect.min,
             egui::vec2(3.0, height),
         );
-        ui.painter().rect_filled(indicator_rect, 0.0, dark::ACCENT_BLUE);
+        ui.painter().rect_filled(indicator_rect, 0.0, theme.accent);
     }
 
     // Icon
@@ -153,9 +154,9 @@ fn render_channel_item(
     };
 
     let icon_color = if selected || has_highlight || unread > 0 {
-        text_colors::primary(dark_mode)
+        theme.text_primary
     } else {
-        text_colors::muted(dark_mode)
+        theme.text_muted
     };
 
     ui.painter().text(
@@ -168,13 +169,13 @@ fn render_channel_item(
 
     // Channel name
     let text_color = if has_highlight {
-        dark::ACCENT_RED
+        theme.error
     } else if selected {
-        text_colors::primary(dark_mode)
+        theme.text_primary
     } else if unread > 0 {
-        text_colors::primary(dark_mode)
+        theme.text_primary
     } else {
-        text_colors::secondary(dark_mode)
+        theme.text_secondary
     };
 
     let display_name = if name.starts_with('#') {
@@ -206,9 +207,9 @@ fn render_channel_item(
         };
 
         let badge_color = if has_highlight {
-            dark::ACCENT_RED
+            theme.error
         } else {
-            dark::ACCENT_BLUE
+            theme.accent
         };
 
         let badge_font = egui::FontId::new(10.0, egui::FontFamily::Proportional);
@@ -242,7 +243,8 @@ pub fn render_user_list(
     context_menu_target: &mut Option<String>,
 ) {
     let dark_mode = ctx.style().visuals.dark_mode;
-    let sidebar_bg = panel_colors::sidebar_bg(dark_mode);
+    let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
+    let sidebar_bg = theme.surface[1];
 
     // Group users by role
     let (ops, voiced, regular): (Vec<_>, Vec<_>, Vec<_>) = {
@@ -269,7 +271,7 @@ pub fn render_user_list(
             egui::Frame::new()
                 .fill(sidebar_bg)
                 .inner_margin(egui::Margin::same(0))
-                .stroke(Stroke::new(1.0, panel_colors::separator(dark_mode))),
+                .stroke(Stroke::new(1.0, theme.border_medium)),
         )
         .show(ctx, |ui| {
             egui::ScrollArea::vertical()
@@ -277,18 +279,18 @@ pub fn render_user_list(
                 .show(ui, |ui| {
                     // Operators section
                     if !ops.is_empty() {
-                        render_user_section(ui, "OPERATORS", &ops, dark_mode, context_menu_visible, context_menu_target);
+                        render_user_section(ui, "OPERATORS", &ops, &theme, context_menu_visible, context_menu_target);
                     }
 
                     // Voiced section
                     if !voiced.is_empty() {
-                        render_user_section(ui, "VOICED", &voiced, dark_mode, context_menu_visible, context_menu_target);
+                        render_user_section(ui, "VOICED", &voiced, &theme, context_menu_visible, context_menu_target);
                     }
 
                     // Regular users section
                     if !regular.is_empty() {
                         let label = format!("ONLINE — {}", regular.len());
-                        render_user_section(ui, &label, &regular, dark_mode, context_menu_visible, context_menu_target);
+                        render_user_section(ui, &label, &regular, &theme, context_menu_visible, context_menu_target);
                     }
                 });
         });
@@ -299,7 +301,7 @@ fn render_user_section(
     ui: &mut egui::Ui,
     title: &str,
     users: &[&UserInfo],
-    dark_mode: bool,
+    theme: &SlircTheme,
     context_menu_visible: &mut bool,
     context_menu_target: &mut Option<String>,
 ) {
@@ -311,14 +313,14 @@ fn render_user_section(
             egui::RichText::new(title)
                 .size(10.0)
                 .strong()
-                .color(text_colors::muted(dark_mode)),
+                .color(theme.text_muted),
         );
     });
     ui.add_space(4.0);
 
     // Users in section
     for user in users {
-        let clicked = render_user_item(ui, user, dark_mode);
+        let clicked = render_user_item(ui, user, theme);
         if clicked.1 {
             *context_menu_visible = true;
             *context_menu_target = Some(format!("user:{}", user.nick));
@@ -328,8 +330,8 @@ fn render_user_section(
 
 /// Render a single user item
 /// Returns (left_clicked, right_clicked)
-fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, dark_mode: bool) -> (bool, bool) {
-    let height = spacing::USER_ITEM_HEIGHT;
+fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (bool, bool) {
+    let height = 28.0;
     let available_width = ui.available_width();
 
     let (rect, response) = ui.allocate_exact_size(
@@ -341,12 +343,11 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, dark_mode: bool) -> (boo
 
     // Hover background
     if hovered {
-        ui.painter().rect_filled(rect, 0.0, panel_colors::hover_bg(dark_mode));
+        ui.painter().rect_filled(rect, 0.0, theme.surface[3]);
     }
 
     // Status dot
-    let theme_obj = theme::SlircTheme::dark(); // TODO: Get from app state
-    let status_color = theme::prefix_color(&theme_obj, user.prefix);
+    let status_color = theme::prefix_color(theme, user.prefix);
     let dot_center = egui::pos2(rect.min.x + 20.0, rect.center().y);
     ui.painter().circle_filled(dot_center, 4.0, status_color);
 

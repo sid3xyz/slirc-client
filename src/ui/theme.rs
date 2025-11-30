@@ -229,134 +229,6 @@ pub fn mirc_color(code: u8) -> Color32 {
     MIRC_COLORS.get(code as usize).copied().unwrap_or(Color32::WHITE)
 }
 
-// Legacy compatibility modules - deprecated, use SlircTheme instead
-#[deprecated(note = "Use SlircTheme::dark() instead")]
-pub mod dark {
-    use super::Color32;
-    pub const BG_DARKEST: Color32 = Color32::from_rgb(10, 10, 15);
-    pub const BG_DARKER: Color32 = Color32::from_rgb(19, 19, 26);
-    pub const BG_DARK: Color32 = Color32::from_rgb(28, 28, 38);
-    pub const BG_BASE: Color32 = Color32::from_rgb(37, 37, 50);
-    pub const BG_ELEVATED: Color32 = Color32::from_rgb(46, 46, 62);
-    pub const BG_HOVER: Color32 = Color32::from_rgb(56, 56, 74);
-    pub const BG_ACTIVE: Color32 = Color32::from_rgb(66, 66, 86);
-    pub const TEXT_NORMAL: Color32 = Color32::WHITE;
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(185, 187, 190);
-    pub const TEXT_FAINT: Color32 = Color32::from_rgb(114, 118, 125);
-    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(88, 101, 242);
-    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(67, 181, 129);
-    pub const ACCENT_YELLOW: Color32 = Color32::from_rgb(250, 166, 26);
-    pub const ACCENT_RED: Color32 = Color32::from_rgb(240, 71, 71);
-    pub const ACCENT_PINK: Color32 = Color32::from_rgb(235, 69, 158);
-    pub const BORDER: Color32 = Color32::from_rgb(47, 49, 54);
-    pub const SCROLLBAR: Color32 = Color32::from_rgb(56, 56, 74);
-    pub const SCROLLBAR_HOVER: Color32 = Color32::from_rgb(66, 66, 86);
-}
-
-#[deprecated(note = "Use SlircTheme::light() instead")]
-pub mod light {
-    use super::Color32;
-    pub const BG_DARKEST: Color32 = Color32::from_rgb(212, 215, 220);
-    pub const BG_DARKER: Color32 = Color32::from_rgb(227, 229, 232);
-    pub const BG_DARK: Color32 = Color32::from_rgb(242, 243, 245);
-    pub const BG_BASE: Color32 = Color32::from_rgb(255, 255, 255);
-    pub const BG_ELEVATED: Color32 = Color32::from_rgb(246, 246, 247);
-    pub const BG_HOVER: Color32 = Color32::from_rgb(227, 229, 232);
-    pub const BG_ACTIVE: Color32 = Color32::from_rgb(212, 215, 220);
-    pub const TEXT_NORMAL: Color32 = Color32::from_rgb(6, 6, 7);
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(79, 86, 96);
-    pub const TEXT_FAINT: Color32 = Color32::from_rgb(116, 127, 141);
-    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(88, 101, 242);
-    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(67, 181, 129);
-    pub const ACCENT_RED: Color32 = Color32::from_rgb(240, 71, 71);
-    pub const BORDER: Color32 = Color32::from_rgb(210, 213, 219);
-    pub const SCROLLBAR: Color32 = Color32::from_rgb(196, 201, 208);
-}
-
-pub mod msg_colors {
-    use super::Color32;
-    pub const TIMESTAMP: Color32 = Color32::from_rgb(116, 127, 141);
-    pub const JOIN: Color32 = Color32::from_rgb(67, 181, 129);
-    pub const PART: Color32 = Color32::from_rgb(148, 155, 164);
-    pub const QUIT: Color32 = Color32::from_rgb(148, 155, 164);
-    pub const ACTION: Color32 = Color32::from_rgb(155, 89, 182);
-    pub const TOPIC: Color32 = Color32::from_rgb(52, 152, 219);
-    pub const NOTICE: Color32 = Color32::from_rgb(250, 166, 26);
-    pub const NOTICE_TEXT: Color32 = Color32::from_rgb(225, 200, 150);
-    pub const HIGHLIGHT: Color32 = Color32::from_rgb(255, 210, 100);
-    pub const SYSTEM: Color32 = Color32::from_rgb(116, 127, 141);
-}
-
-#[deprecated(note = "Use SlircTheme methods instead")]
-pub mod panel_colors {
-    use super::{dark, light, Color32};
-    pub fn sidebar_bg(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BG_DARKER } else { light::BG_DARKER }
-    }
-    pub fn chat_bg(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BG_DARK } else { light::BG_BASE }
-    }
-    pub fn input_bg(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BG_BASE } else { light::BG_ELEVATED }
-    }
-    pub fn input_field_bg(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BG_ELEVATED } else { light::BG_BASE }
-    }
-    pub fn hover_bg(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BG_HOVER } else { light::BG_HOVER }
-    }
-    pub fn active_bg(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BG_ACTIVE } else { light::BG_ACTIVE }
-    }
-    pub fn separator(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::BORDER } else { light::BORDER }
-    }
-    pub fn focus_border(_dark_mode: bool) -> Color32 {
-        dark::ACCENT_BLUE
-    }
-}
-
-#[deprecated(note = "Use SlircTheme methods instead")]
-pub mod text_colors {
-    use super::{dark, light, Color32};
-    pub fn primary(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::TEXT_NORMAL } else { light::TEXT_NORMAL }
-    }
-    pub fn secondary(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::TEXT_MUTED } else { light::TEXT_MUTED }
-    }
-    pub fn faint(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::TEXT_FAINT } else { light::TEXT_FAINT }
-    }
-    pub fn muted(dark_mode: bool) -> Color32 {
-        if dark_mode { dark::TEXT_FAINT } else { light::TEXT_FAINT }
-    }
-}
-
-/// Global spacing constants for consistent UI rhythm (8pt grid system)
-pub mod spacing {
-    /// Space between messages from different users
-    pub const MESSAGE_GROUP_SPACING: f32 = 16.0;
-    /// Space between consecutive messages from same user
-    pub const MESSAGE_CONTINUATION_SPACING: f32 = 4.0;
-    /// General item spacing
-    pub const MESSAGE_SPACING_Y: f32 = 4.0;
-    /// Channel list item height
-    pub const CHANNEL_ITEM_HEIGHT: f32 = 32.0;
-    /// User list item height
-    pub const USER_ITEM_HEIGHT: f32 = 28.0;
-    /// Panel margin
-    pub const PANEL_MARGIN: f32 = 12.0;
-    /// Input field corner rounding
-    pub const INPUT_ROUNDING: f32 = 8.0;
-    /// General corner rounding
-    pub const CORNER_RADIUS: f32 = 4.0;
-    /// Avatar size (main chat)
-    pub const AVATAR_SIZE: f32 = 36.0;
-    /// Small status dot (user list)
-    pub const STATUS_DOT_SIZE: f32 = 8.0;
-}
-
 /// Render a circular avatar with user initials
 pub fn render_avatar(ui: &mut eframe::egui::Ui, nick: &str, size: f32) -> eframe::egui::Response {
     let (rect, response) = ui.allocate_exact_size(
@@ -391,7 +263,7 @@ pub fn render_status_dot(
     theme: &SlircTheme,
     prefix: Option<char>,
 ) -> eframe::egui::Response {
-    let size = spacing::STATUS_DOT_SIZE;
+    let size = 8.0;
     let (rect, response) = ui.allocate_exact_size(
         eframe::egui::vec2(size, size),
         eframe::egui::Sense::hover(),
