@@ -1,6 +1,7 @@
 //! IRC command handling (/join, /part, /msg, etc.).
 
 use crossbeam_channel::Sender;
+use slirc_proto::ctcp::Ctcp;
 
 use crate::protocol::BackendAction;
 use crate::validation;
@@ -97,8 +98,8 @@ pub fn handle_user_command(
             if text.is_empty() {
                 system_log.push("Usage: /me <action>".into());
             } else {
-                // Use ACTION CTCP encoding
-                let action_text = format!("\x01ACTION {}\x01", text);
+                // Use slirc_proto's Ctcp for proper ACTION encoding
+                let action_text = Ctcp::action(&text).to_string();
                 // Send to active buffer
                 if active_buffer != "System" {
                     let target = active_buffer.to_string();

@@ -2,6 +2,7 @@
 //! Features: message grouping, avatars, hover states, improved typography.
 
 use eframe::egui::{self, Color32};
+use slirc_proto::ctcp::Ctcp;
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 use crate::ui::theme::{self, SlircTheme};
@@ -325,11 +326,10 @@ fn render_message_content(
 ) {
     match &msg.msg_type {
         MessageType::Action => {
-            let action = if msg.text.starts_with("\x01ACTION ") && msg.text.ends_with('\x01') {
-                &msg.text[8..msg.text.len() - 1]
-            } else {
-                &msg.text
-            };
+            // Use slirc_proto's CTCP parser to extract action text
+            let action = Ctcp::parse(&msg.text)
+                .and_then(|c| c.params.map(String::from))
+                .unwrap_or_else(|| msg.text.clone());
             ui.label(
                 egui::RichText::new(action)
                     .size(14.0)

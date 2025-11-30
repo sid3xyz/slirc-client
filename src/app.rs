@@ -1,6 +1,7 @@
 use chrono::Local;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui::{self, Color32};
+use slirc_proto::ctcp::Ctcp;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::time::Duration;
@@ -950,44 +951,43 @@ impl eframe::App for SlircApp {
                     if let Some(buffer) = self.buffers.get(&open_name) {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for msg in &buffer.messages {
-                                // Check if this is a CTCP ACTION message
-                                if msg.text.starts_with("\x01ACTION ") && msg.text.ends_with('\x01')
-                                {
-                                    // Extract action text (remove \x01ACTION  and trailing \x01)
-                                    let action = &msg.text[8..msg.text.len() - 1];
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::LIGHT_GRAY),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new("*")
-                                                .color(egui::Color32::from_rgb(255, 150, 0)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(&msg.sender)
-                                                .color(ui::theme::nick_color(&msg.sender)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(action)
-                                                .color(egui::Color32::from_rgb(255, 150, 0))
-                                                .italics(),
-                                        );
-                                    });
-                                } else {
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("[{}]", msg.timestamp))
-                                                .color(egui::Color32::LIGHT_GRAY),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(format!("<{}>", msg.sender))
-                                                .color(egui::Color32::LIGHT_BLUE)
-                                                .strong(),
-                                        );
-                                        ui.label(&msg.text);
-                                    });
+                                // Check if this is a CTCP ACTION message using slirc_proto
+                                if let Some(ctcp) = Ctcp::parse(&msg.text) {
+                                    if let Some(action) = ctcp.params {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!("[{}]", msg.timestamp))
+                                                    .color(egui::Color32::LIGHT_GRAY),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new("*")
+                                                    .color(egui::Color32::from_rgb(255, 150, 0)),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(&msg.sender)
+                                                    .color(ui::theme::nick_color(&msg.sender)),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(action)
+                                                    .color(egui::Color32::from_rgb(255, 150, 0))
+                                                    .italics(),
+                                            );
+                                        });
+                                        continue;
+                                    }
                                 }
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("[{}]", msg.timestamp))
+                                            .color(egui::Color32::LIGHT_GRAY),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("<{}>", msg.sender))
+                                            .color(egui::Color32::LIGHT_BLUE)
+                                            .strong(),
+                                    );
+                                    ui.label(&msg.text);
+                                });
                             }
                         });
                     }

@@ -2,6 +2,7 @@
 
 use chrono::Local;
 use crossbeam_channel::Receiver;
+use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use std::collections::{HashMap, HashSet};
 
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
@@ -137,8 +138,13 @@ pub fn process_single_event(
                 let active = active_buffer.clone();
                 let buffer = ensure_buffer(buffers, buffers_order, &buffer_name);
                 let is_active = active == buffer_name;
-                let msg_type = if text.starts_with("\x01ACTION ") && text.ends_with('\x01') {
-                    MessageType::Action
+                // Use slirc_proto's CTCP parser to detect ACTION messages
+                let msg_type = if let Some(ctcp) = Ctcp::parse(&text) {
+                    if matches!(ctcp.kind, CtcpKind::Action) {
+                        MessageType::Action
+                    } else {
+                        MessageType::Normal
+                    }
                 } else if sender.starts_with('-') && sender.ends_with('-') {
                     // Backend marks NOTICE messages with -<sender>- as a sender string
                     MessageType::Notice
