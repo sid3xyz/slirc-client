@@ -52,9 +52,6 @@ pub struct ChannelBuffer {
     pub topic: String,
     pub unread_count: usize,
     pub has_highlight: bool,
-    /// Smart scrolling: if user scrolled up, don't auto-scroll
-    #[allow(dead_code)] // Planned for smart scrolling feature
-    pub scroll_locked: bool,
 }
 
 impl ChannelBuffer {

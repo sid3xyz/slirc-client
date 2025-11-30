@@ -188,7 +188,6 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                     BackendAction::Join(channel) => {
                         if let Some(ref mut t) = transport {
                             let join_msg = Message::join(&channel);
-                            // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", join_msg)));
                             if let Err(e) = t.write_message(&join_msg).await {
                                 let _ = event_tx
                                     .send(GuiEvent::Error(format!("Failed to join: {}", e)));
@@ -203,7 +202,6 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             } else {
                                 Message::part(&channel)
                             };
-                            // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", part_msg)));
                             if let Err(e) = t.write_message(&part_msg).await {
                                 let _ = event_tx
                                     .send(GuiEvent::Error(format!("Failed to part: {}", e)));
@@ -213,7 +211,6 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                     BackendAction::Nick(newnick) => {
                         if let Some(ref mut t) = transport {
                             let nick_msg = Message::nick(&newnick);
-                            // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", nick_msg)));
                             if let Err(e) = t.write_message(&nick_msg).await {
                                 let _ = event_tx
                                     .send(GuiEvent::Error(format!("Failed to send NICK: {}", e)));
@@ -298,7 +295,6 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             } else {
                                 Message::quit()
                             };
-                            // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", quit_msg)));
                             let _ = t.write_message(&quit_msg).await;
                         }
                         transport = None;
@@ -324,7 +320,6 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                     BackendAction::SendMessage { target, text } => {
                         if let Some(ref mut t) = transport {
                             let privmsg = Message::privmsg(&target, &text);
-                            // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", privmsg)));
                             if let Err(e) = t.write_message(&privmsg).await {
                                 let _ = event_tx
                                     .send(GuiEvent::Error(format!("Failed to send: {}", e)));
@@ -353,7 +348,6 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             Command::PING(server, _) => {
                                 let pong = Message::pong(server);
                                 let _ = t.write_message(&pong).await;
-                                // let _ = event_tx.send(GuiEvent::RawMessage(format!("→ {}", pong)));
                             }
 
                             // RPL_WELCOME (001) - Registration complete
@@ -587,10 +581,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             }
 
                             // For other messages, we might want to log them if they are interesting
-                            _ => {
-                                // Optional: Log unhandled messages to system log for debugging
-                                // let _ = event_tx.send(GuiEvent::RawMessage(format!("← {}", message)));
-                            }
+                            _ => {}
                         }
                     }
                     Ok(Ok(None)) => {

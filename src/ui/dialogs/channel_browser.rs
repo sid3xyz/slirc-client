@@ -32,16 +32,6 @@ impl ChannelBrowserDialog {
         }
     }
 
-    /// Create a browser with an existing channel list
-    #[allow(dead_code)]
-    pub fn with_channels(channels: Vec<ChannelListItem>) -> Self {
-        Self {
-            channels,
-            filter: String::new(),
-            is_loading: false,
-        }
-    }
-
     /// Add a channel to the list (called as LIST responses arrive)
     pub fn add_channel(&mut self, item: ChannelListItem) {
         self.channels.push(item);
@@ -209,14 +199,13 @@ mod tests {
 
     #[test]
     fn test_channel_browser_with_channels() {
-        let channels = vec![
-            ChannelListItem {
-                channel: "#rust".to_string(),
-                user_count: 100,
-                topic: "Welcome to Rust!".to_string(),
-            },
-        ];
-        let dialog = ChannelBrowserDialog::with_channels(channels);
+        let mut dialog = ChannelBrowserDialog::new();
+        dialog.add_channel(ChannelListItem {
+            channel: "#rust".to_string(),
+            user_count: 100,
+            topic: "Welcome to Rust!".to_string(),
+        });
+        dialog.set_loading_complete();
         assert_eq!(dialog.channels.len(), 1);
         assert!(!dialog.is_loading);
     }
@@ -235,13 +224,13 @@ mod tests {
 
     #[test]
     fn test_channel_browser_clear() {
-        let mut dialog = ChannelBrowserDialog::with_channels(vec![
-            ChannelListItem {
-                channel: "#test".to_string(),
-                user_count: 10,
-                topic: "Test".to_string(),
-            },
-        ]);
+        let mut dialog = ChannelBrowserDialog::new();
+        dialog.add_channel(ChannelListItem {
+            channel: "#test".to_string(),
+            user_count: 10,
+            topic: "Test".to_string(),
+        });
+        dialog.set_loading_complete();
         dialog.filter = "test".to_string();
         
         dialog.clear();

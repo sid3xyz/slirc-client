@@ -25,14 +25,6 @@ impl QuickSwitcher {
         }
     }
 
-    /// Show the quick switcher
-    #[allow(dead_code)]
-    pub fn show(&mut self) {
-        self.visible = true;
-        self.query.clear();
-        self.selected_index = 0;
-    }
-
     /// Hide the quick switcher
     pub fn hide(&mut self) {
         self.visible = false;

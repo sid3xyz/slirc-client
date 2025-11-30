@@ -25,12 +25,6 @@ impl HelpDialog {
         self.open = true;
     }
 
-    /// Hide the dialog
-    #[allow(dead_code)]
-    pub fn hide(&mut self) {
-        self.open = false;
-    }
-
     /// Render the help dialog.
     /// Returns true if the dialog is still open, false if it was closed.
     pub fn render(&mut self, ctx: &egui::Context) -> bool {
@@ -102,7 +96,8 @@ mod tests {
         dialog.show();
         assert!(dialog.open);
         
-        dialog.hide();
+        // Toggle off (equivalent to hide)
+        dialog.toggle();
         assert!(!dialog.open);
     }
 }

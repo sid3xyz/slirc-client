@@ -2,7 +2,7 @@
 //! Implements the design system from /docs/MODERN_UI_DESIGN_PLAN.md
 //! Inspired by Discord, Slack, and modern chat applications (2025 standards).
 
-use eframe::egui::{Color32, FontFamily, FontId, Style, TextStyle};
+use eframe::egui::{Color32, FontFamily, FontId, TextStyle};
 use std::collections::BTreeMap;
 
 /// Modern theme with semantic color system (7-level surface hierarchy)
@@ -87,50 +87,6 @@ impl SlircTheme {
             border_strong: Color32::from_rgb(180, 185, 192),
         }
     }
-
-    /// Apply theme to egui Style
-    #[allow(dead_code)]
-    pub fn apply_to_style(&self, style: &mut Style) {
-        let dark_mode = self.name == "Dark";
-        style.visuals.dark_mode = dark_mode;
-        style.visuals.override_text_color = Some(self.text_primary);
-        style.visuals.panel_fill = self.surface[1];
-        style.visuals.window_fill = self.surface[0];
-        style.visuals.extreme_bg_color = self.surface[0];
-        style.visuals.faint_bg_color = self.surface[2];
-
-        // Widget colors with modern states
-        style.visuals.widgets.noninteractive.bg_fill = self.surface[1];
-        style.visuals.widgets.noninteractive.weak_bg_fill = self.surface[0];
-        style.visuals.widgets.noninteractive.fg_stroke.color = self.text_secondary;
-
-        style.visuals.widgets.inactive.bg_fill = self.surface[2];
-        style.visuals.widgets.inactive.weak_bg_fill = self.surface[1];
-        style.visuals.widgets.inactive.fg_stroke.color = self.text_secondary;
-
-        style.visuals.widgets.hovered.bg_fill = self.surface[3];
-        style.visuals.widgets.hovered.weak_bg_fill = self.surface[2];
-        style.visuals.widgets.hovered.fg_stroke.color = self.text_primary;
-
-        style.visuals.widgets.active.bg_fill = self.surface[4];
-        style.visuals.widgets.active.weak_bg_fill = self.surface[3];
-        style.visuals.widgets.active.fg_stroke.color = self.accent;
-
-        // Selection
-        style.visuals.selection.bg_fill = self.accent.linear_multiply(0.3);
-        style.visuals.selection.stroke.color = self.accent;
-
-        // Hyperlinks
-        style.visuals.hyperlink_color = self.info;
-
-        // Spacing (8pt grid system)
-        style.spacing.item_spacing = [8.0, 8.0].into();
-        style.spacing.button_padding = [12.0, 6.0].into();
-        style.spacing.indent = 20.0;
-        style.spacing.scroll.bar_width = 8.0;
-        style.spacing.scroll.bar_inner_margin = 2.0;
-        style.spacing.scroll.bar_outer_margin = 0.0;
-    }
 }
 
 /// Configure modern text styles (16px base font, proper hierarchy)
@@ -186,7 +142,6 @@ pub fn nick_color(nick: &str) -> Color32 {
 }
 
 /// IRC user prefix ranks (higher = more privileged).
-#[allow(dead_code)]
 pub fn prefix_rank(prefix: Option<char>) -> u8 {
     match prefix {
         Some('~') => 5,
@@ -270,65 +225,6 @@ pub fn render_avatar(ui: &mut eframe::egui::Ui, nick: &str, size: f32) -> eframe
     );
 
     response
-}
-
-/// Render a small status dot for user list
-#[allow(dead_code)]
-pub fn render_status_dot(
-    ui: &mut eframe::egui::Ui,
-    theme: &SlircTheme,
-    prefix: Option<char>,
-) -> eframe::egui::Response {
-    let size = 8.0;
-    let (rect, response) = ui.allocate_exact_size(
-        eframe::egui::vec2(size, size),
-        eframe::egui::Sense::hover(),
-    );
-
-    let color = prefix_color(theme, prefix);
-    ui.painter().circle_filled(rect.center(), size / 2.0, color);
-
-    response
-}
-
-/// Render unread badge
-#[allow(dead_code)]
-pub fn render_unread_badge(ui: &mut eframe::egui::Ui, theme: &SlircTheme, count: usize, has_mention: bool) {
-    if count == 0 {
-        return;
-    }
-
-    let (bg, fg) = if has_mention {
-        (theme.error, Color32::WHITE)
-    } else {
-        (theme.accent, Color32::WHITE)
-    };
-
-    let text = if count > 99 {
-        "99+".to_string()
-    } else {
-        count.to_string()
-    };
-
-    let font_id = eframe::egui::FontId::new(10.0, eframe::egui::FontFamily::Proportional);
-    let galley = ui.fonts(|f| f.layout_no_wrap(text.clone(), font_id.clone(), fg));
-
-    let padding = 4.0;
-    let min_width = 18.0;
-    let badge_width = galley.size().x.max(min_width - padding * 2.0) + padding * 2.0;
-    let badge_height = 16.0;
-
-    let (rect, _) = ui.allocate_exact_size(
-        eframe::egui::vec2(badge_width, badge_height),
-        eframe::egui::Sense::hover(),
-    );
-
-    ui.painter().rect_filled(rect, badge_height / 2.0, bg);
-    ui.painter().galley(
-        rect.center() - galley.size() / 2.0,
-        galley,
-        fg,
-    );
 }
 
 #[cfg(test)]

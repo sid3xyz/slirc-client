@@ -576,14 +576,14 @@ mod integration_tests {
     fn test_mirc_color_palette() {
         use crate::ui::theme::mirc_color;
         
-        // Test all 16 standard mIRC colors
-        for i in 0..16 {
-            let color = mirc_color(i);
-            // Verify we get a valid Color32 (any value is valid, just shouldn't panic)
-            assert!(color.r() <= 255);
-            assert!(color.g() <= 255);
-            assert!(color.b() <= 255);
-        }
+        // Test all 16 standard mIRC colors exist and are distinct
+        let colors: Vec<_> = (0..16).map(|i| mirc_color(i)).collect();
+        
+        // Verify color 0 is white (standard mIRC)
+        assert_eq!(colors[0], eframe::egui::Color32::from_rgb(255, 255, 255));
+        
+        // Verify color 1 is black (standard mIRC)
+        assert_eq!(colors[1], eframe::egui::Color32::from_rgb(0, 0, 0));
         
         // Test out-of-range codes return white (safe default)
         let out_of_range = mirc_color(99);

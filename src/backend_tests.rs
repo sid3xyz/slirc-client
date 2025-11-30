@@ -236,7 +236,6 @@ mod backend_tests {
 
         let mut buffers = HashMap::new();
         let mut buffers_order = Vec::new();
-        let system_log: Vec<String> = Vec::new();
 
         // Simulate receiving a Names event
         let names = vec![

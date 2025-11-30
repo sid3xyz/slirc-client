@@ -85,12 +85,6 @@ impl TopicEditorDialog {
         let still_open = window_open && !should_close;
         (action, still_open)
     }
-
-    /// Get the channel being edited
-    #[allow(dead_code)]
-    pub fn channel(&self) -> &str {
-        &self.channel
-    }
 }
 
 #[cfg(test)]
@@ -108,6 +102,6 @@ mod tests {
     #[test]
     fn test_topic_editor_channel() {
         let dialog = TopicEditorDialog::new("#test", "Test topic");
-        assert_eq!(dialog.channel(), "#test");
+        assert_eq!(dialog.channel, "#test");
     }
 }
