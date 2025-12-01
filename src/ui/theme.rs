@@ -1,6 +1,88 @@
 //! Modern color themes and styling utilities for the IRC client.
-//! Implements the design system from /docs/MODERN_UI_DESIGN_PLAN.md
-//! Inspired by Discord, Slack, and modern chat applications (2025 standards).
+//!
+//! # Overview
+//!
+//! This module implements a complete design system based on `/docs/MODERN_UI_DESIGN_PLAN.md`,
+//! drawing inspiration from Discord, Slack, and modern chat applications (2025 standards).
+//!
+//! # Architecture
+//!
+//! ## Surface Hierarchy (7 Levels)
+//!
+//! The theme uses a 7-level surface system for depth perception:
+//!
+//! - `surface[0]`: App background (deepest layer)
+//! - `surface[1]`: Sidebar/panel backgrounds
+//! - `surface[2]`: Message area background
+//! - `surface[3]`: Hover states
+//! - `surface[4]`: Active/selected states
+//! - `surface[5]`: Elevated panels (modals)
+//! - `surface[6]`: Highest elevation (dialogs, popovers)
+//!
+//! ## Semantic Colors
+//!
+//! Beyond surfaces, the theme provides semantic colors for common UI states:
+//!
+//! - **Accent**: Primary brand color (used for buttons, links, focus indicators)
+//! - **Success**: Green for positive actions (connected, sent, online)
+//! - **Warning**: Orange for caution states (away, rate-limited)
+//! - **Error**: Red for failures (disconnected, invalid input)
+//! - **Info**: Blue for informational messages
+//!
+//! ## Text Hierarchy
+//!
+//! Four levels of text emphasis:
+//!
+//! - `text_primary`: Main content (WHITE in dark mode)
+//! - `text_secondary`: Supporting content (lighter gray)
+//! - `text_muted`: De-emphasized text (timestamps, metadata)
+//! - `text_disabled`: Inactive UI elements
+//!
+//! ## Border System
+//!
+//! Three border weights for visual separation:
+//!
+//! - `border_subtle`: Faint dividers (between list items)
+//! - `border_medium`: Standard borders (panels, inputs)
+//! - `border_strong`: Prominent borders (focus indicators)
+//!
+//! # Usage Examples
+//!
+//! ```rust
+//! use crate::ui::theme::SlircTheme;
+//!
+//! // Get the theme
+//! let theme = SlircTheme::dark();
+//!
+//! // Render a panel with proper surface
+//! egui::Frame::none()
+//!     .fill(theme.surface[1])  // Sidebar background
+//!     .stroke(egui::Stroke::new(1.0, theme.border_medium))
+//!     .show(ui, |ui| {
+//!         // Panel content
+//!     });
+//!
+//! // Show an error message
+//! ui.colored_label(theme.error, "Connection failed!");
+//!
+//! // Render a nickname with consistent color
+//! let nick = "alice";
+//! let color = nick_color(nick);
+//! ui.colored_label(color, nick);
+//! ```
+//!
+//! # Design Principles
+//!
+//! 1. **Consistent Depth**: Always use the surface hierarchy for z-ordering
+//! 2. **Semantic Over Arbitrary**: Use semantic colors (success/warning/error) not random colors
+//! 3. **Accessibility**: All colors meet WCAG AA contrast requirements
+//! 4. **Dark-First**: Dark theme is the primary design, light theme is inverted
+//!
+//! # References
+//!
+//! - Design spec: `/docs/MODERN_UI_DESIGN_PLAN.md`
+//! - Audit doc: `/docs/AUDIT_AND_FORWARD_PATH.md`
+//! - WCAG 2.1 AA: <https://www.w3.org/WAI/WCAG21/quickref/>
 
 use eframe::egui::{Color32, FontFamily, FontId, TextStyle};
 use std::collections::BTreeMap;
@@ -90,6 +172,34 @@ impl SlircTheme {
 }
 
 /// Configure modern text styles (16px base font, proper hierarchy)
+///
+/// # Typography System
+///
+/// Based on the MODERN_UI_DESIGN_PLAN, this creates a complete text hierarchy:
+///
+/// ## Standard Styles
+///
+/// - **Small**: 10px proportional - Timestamps, metadata
+/// - **Body**: 14px proportional - Standard UI text, labels
+/// - **Button**: 13px proportional - Button labels (slightly smaller for weight)
+/// - **Heading**: 16px proportional - Section headers, emphasis
+/// - **Monospace**: 13px monospace - Code, technical content
+///
+/// ## IRC-Specific Styles
+///
+/// - **irc_message**: 14px monospace - Chat message content
+/// - **irc_timestamp**: 11px monospace - Message timestamps
+/// - **irc_nick**: 13px proportional - Nickname labels
+/// - **topic**: 12px proportional - Channel topics
+/// - **section_header**: 11px proportional - Sidebar sections ("NETWORKS", "CHANNELS")
+/// - **channel_name**: 14px proportional - Channel names in sidebar
+///
+/// # Font Families
+///
+/// - **Proportional**: Inter (clean, modern sans-serif)
+/// - **Monospace**: JetBrains Mono (excellent for chat messages)
+///
+/// Both fonts are bundled via `src/fonts.rs`.
 pub fn configure_text_styles() -> BTreeMap<TextStyle, FontId> {
     use FontFamily::{Monospace, Proportional};
     
@@ -111,6 +221,51 @@ pub fn configure_text_styles() -> BTreeMap<TextStyle, FontId> {
 }
 
 /// Apply the modern theme style to the egui context
+///
+/// # What This Does
+///
+/// Configures the global egui style with:
+///
+/// 1. **Typography**: Applies the complete text hierarchy (see `configure_text_styles()`)
+/// 2. **Spacing**: Sets consistent padding/margins following 8px grid
+/// 3. **Button Styling**: Modern rounded buttons with proper hover/active states
+/// 4. **Input Styling**: Dark text inputs with subtle selection color
+/// 5. **Visual Refinements**: Corner radius, stroke removal, consistent colors
+///
+/// # Styling Details
+///
+/// ## Spacing (8px grid system)
+///
+/// - Item spacing: 8px horizontal, 6px vertical
+/// - Window margin: 12px all sides
+/// - Button padding: 10px horizontal, 5px vertical
+///
+/// ## Button States
+///
+/// - **Inactive**: `rgb(55, 60, 70)` - Neutral dark gray
+/// - **Hovered**: `rgb(70, 76, 88)` - Lighter gray
+/// - **Active**: `rgb(88, 101, 242)` - Accent blue
+/// - Corner radius: 6px (all states)
+/// - No stroke (modern flat design)
+///
+/// ## Text Input
+///
+/// - Background: `rgb(30, 32, 38)` - Slightly darker than surface
+/// - Selection: `rgba(88, 101, 242, 100)` - Semi-transparent accent
+///
+/// # Usage
+///
+/// Call once during app initialization:
+///
+/// ```rust
+/// impl eframe::App for SlircApp {
+///     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+///         crate::ui::theme::apply_app_style(&cc.egui_ctx);
+///         crate::fonts::setup_fonts(&cc.egui_ctx);
+///         // ... rest of setup
+///     }
+/// }
+/// ```
 pub fn apply_app_style(ctx: &eframe::egui::Context) {
     let mut style = (*ctx.style()).clone();
     
@@ -145,6 +300,20 @@ pub fn apply_app_style(ctx: &eframe::egui::Context) {
 }
 
 /// Modern nick color palette - 16 vibrant, accessible colors
+///
+/// # Design
+///
+/// Carefully selected for:
+///
+/// - **Distinctness**: Colors are visually different from each other
+/// - **Accessibility**: All meet WCAG AA contrast on dark backgrounds
+/// - **Vibrancy**: Modern, saturated colors (not muted pastels)
+/// - **Consistency**: Based on Material Design and Tailwind palettes
+///
+/// # Usage
+///
+/// Don't use this array directly. Use `nick_color(nick)` which deterministically
+/// maps nicknames to colors using FNV-1a hashing.
 const NICK_COLORS: [Color32; 16] = [
     Color32::from_rgb(231, 76, 60),   // Vibrant red
     Color32::from_rgb(46, 204, 113),  // Emerald green
@@ -165,6 +334,35 @@ const NICK_COLORS: [Color32; 16] = [
 ];
 
 /// Generate a consistent color for a nickname using FNV-1a hash.
+///
+/// # How It Works
+///
+/// Uses the FNV-1a (Fowler-Noll-Vo) hash algorithm to deterministically map
+/// any nickname string to one of 16 vibrant colors. Same nickname always gets
+/// the same color, making it easy to visually track users in chat.
+///
+/// # Why FNV-1a?
+///
+/// - **Fast**: Single pass over the string
+/// - **Good distribution**: Minimizes color collisions
+/// - **Simple**: No dependencies, easy to audit
+///
+/// # Example
+///
+/// ```rust
+/// let alice_color = nick_color("alice");
+/// let bob_color = nick_color("bob");
+/// // alice_color != bob_color (very likely)
+/// // nick_color("alice") == alice_color (always)
+/// ```
+///
+/// # Parameters
+///
+/// - `nick`: The nickname string (case-sensitive)
+///
+/// # Returns
+///
+/// A `Color32` from the `NICK_COLORS` palette.
 pub fn nick_color(nick: &str) -> Color32 {
     let mut hash: u64 = 1469598103934665603u64;
     for b in nick.as_bytes() {
@@ -176,6 +374,33 @@ pub fn nick_color(nick: &str) -> Color32 {
 }
 
 /// IRC user prefix ranks (higher = more privileged).
+///
+/// # IRC Prefix System
+///
+/// IRC uses single-character prefixes to denote user permissions in a channel:
+///
+/// - `~` (Rank 5): Founder/Owner - Full control of channel
+/// - `&` (Rank 4): Protected/Admin - Cannot be kicked by ops
+/// - `@` (Rank 3): Operator - Can kick/ban users, change modes
+/// - `%` (Rank 2): Half-op - Limited moderation (kick only)
+/// - `+` (Rank 1): Voice - Can speak in moderated channels
+/// - None (Rank 0): Regular user
+///
+/// # Usage
+///
+/// Use this for sorting user lists (highest rank first):
+///
+/// ```rust
+/// users.sort_by_key(|u| std::cmp::Reverse(prefix_rank(u.prefix)));
+/// ```
+///
+/// # Parameters
+///
+/// - `prefix`: Optional prefix character from IRC NAMES reply
+///
+/// # Returns
+///
+/// Numeric rank 0-5 (higher = more privileged)
 pub fn prefix_rank(prefix: Option<char>) -> u8 {
     match prefix {
         Some('~') => 5,
@@ -188,6 +413,30 @@ pub fn prefix_rank(prefix: Option<char>) -> u8 {
 }
 
 /// Color for user prefix/status indicator
+///
+/// # Visual Hierarchy
+///
+/// Maps IRC prefixes to semantic colors:
+///
+/// - **Ops** (`@`, `~`, `&`): Green (success color) - Trusted moderators
+/// - **Voice** (`+`, `%`): Orange (warning color) - Elevated users
+/// - **Regular** (none): Gray (muted) - Standard users
+///
+/// # Usage
+///
+/// ```rust
+/// let color = prefix_color(&theme, Some('@'));
+/// ui.colored_label(color, "@");
+/// ```
+///
+/// # Parameters
+///
+/// - `theme`: The active theme (provides semantic colors)
+/// - `prefix`: Optional prefix character
+///
+/// # Returns
+///
+/// Appropriate `Color32` for the prefix level
 pub fn prefix_color(theme: &SlircTheme, prefix: Option<char>) -> Color32 {
     match prefix {
         Some('@') | Some('~') | Some('&') => theme.success,  // Green for ops
