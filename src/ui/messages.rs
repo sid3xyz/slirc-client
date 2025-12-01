@@ -7,14 +7,59 @@ use slirc_proto::ctcp::Ctcp;
 use crate::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 use crate::ui::theme::{self, SlircTheme};
 
-/// Actions that the message panel can request
-#[derive(Debug, Clone, PartialEq)]
-pub enum MessagePanelAction {
-    OpenTopicEditor(String), // channel name
+/// Check if a message contains a mention of the given nickname.
+///
+/// # Mention Detection Rules
+///
+/// A mention is detected when:
+/// 1. The nickname appears as a complete word (not part of another word)
+/// 2. Case-insensitive matching (alice matches ALICE, Alice, etc.)
+/// 3. Common IRC mention formats: "nick:", "nick,", "@nick"
+///
+/// # Examples
+///
+/// ```ignore
+/// contains_mention("Hey alice, how are you?", "alice") == true
+/// contains_mention("Hey ALICE: check this out", "alice") == true
+/// contains_mention("Hey @alice", "alice") == true
+/// contains_mention("alice's message", "alice") == true  // apostrophe is word boundary
+/// contains_mention("malice aforethought", "alice") == false  // alice is inside word
+/// ```
+fn contains_mention(text: &str, nickname: &str) -> bool {
+    if nickname.is_empty() {
+        return false;
+    }
+
+    let text_lower = text.to_lowercase();
+    let nick_lower = nickname.to_lowercase();
+
+    // Find all occurrences of the nickname
+    let mut search_start = 0;
+    while let Some(pos) = text_lower[search_start..].find(&nick_lower) {
+        let abs_pos = search_start + pos;
+        let end_pos = abs_pos + nick_lower.len();
+
+        // Check if this is a word boundary match
+        let at_start = abs_pos == 0
+            || !text.as_bytes()[abs_pos - 1].is_ascii_alphanumeric()
+            || (abs_pos > 0 && text.as_bytes()[abs_pos - 1] == b'@'); // @mention
+
+        let at_end = end_pos >= text.len()
+            || !text.as_bytes()[end_pos].is_ascii_alphanumeric();
+
+        if at_start && at_end {
+            return true;
+        }
+
+        // Move past this occurrence
+        search_start = abs_pos + 1;
+    }
+
+    false
 }
 
-/// Render the central message panel with topic bar and message list.
-/// Returns Some(MessagePanelAction) if an action was requested.
+/// Render the central message panel with message list.
+/// Topic bar is rendered separately by ui::topic_bar module.
 pub fn render_messages(
     _ctx: &egui::Context,
     ui: &mut egui::Ui,
@@ -22,18 +67,9 @@ pub fn render_messages(
     buffers: &std::collections::HashMap<String, ChannelBuffer>,
     system_log: &[String],
     nickname: &str,
-) -> Option<MessagePanelAction> {
+) {
     let dark_mode = ui.style().visuals.dark_mode;
     let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
-    
-    let mut action: Option<MessagePanelAction> = None;
-
-    // Topic bar - modern style with subtle background
-    if active_buffer != "System" {
-        if let Some(topic_action) = render_topic_bar(ui, active_buffer, buffers, nickname, &theme) {
-            action = Some(topic_action);
-        }
-    }
 
     // Messages area with improved styling
     egui::ScrollArea::vertical()
@@ -50,73 +86,6 @@ pub fn render_messages(
 
             ui.add_space(8.0);
         });
-    
-    action
-}
-
-/// Render topic bar with modern styling
-/// Returns Some(MessagePanelAction::OpenTopicEditor) if user double-clicked to edit topic
-fn render_topic_bar(
-    ui: &mut egui::Ui,
-    active_buffer: &str,
-    buffers: &std::collections::HashMap<String, ChannelBuffer>,
-    nickname: &str,
-    theme: &SlircTheme,
-) -> Option<MessagePanelAction> {
-    let bg_color = theme.surface[2];
-    let mut action: Option<MessagePanelAction> = None;
-
-    egui::TopBottomPanel::top("topic_bar")
-        .frame(
-            egui::Frame::new()
-                .fill(bg_color)
-                .inner_margin(egui::Margin::symmetric(20, 14))
-                .stroke(egui::Stroke::new(1.0, theme.border_medium))
-                .corner_radius(egui::CornerRadius::ZERO),
-        )
-        .show_inside(ui, |ui| {
-            if let Some(buffer) = buffers.get(active_buffer) {
-                let topic_text = if buffer.topic.is_empty() {
-                    "No topic set — Double-click to set one"
-                } else {
-                    &buffer.topic
-                };
-
-                let is_op = buffer.users.iter().any(|u| {
-                    u.nick == nickname && theme::prefix_rank(u.prefix) >= 3
-                });
-
-                let topic_response = ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(topic_text)
-                            .size(13.0)
-                            .color(theme.text_secondary))
-                    .wrap()
-                    .sense(if is_op {
-                        egui::Sense::click()
-                    } else {
-                        egui::Sense::hover()
-                    }),
-                );
-
-                if is_op && topic_response.double_clicked() {
-                    action = Some(MessagePanelAction::OpenTopicEditor(active_buffer.to_string()));
-                }
-                if is_op {
-                    topic_response.on_hover_text("Double-click to edit topic");
-                }
-            }
-            
-            // Subtle separator line
-            ui.add_space(8.0);
-            let separator_rect = egui::Rect::from_min_size(
-                ui.cursor().min,
-                egui::vec2(ui.available_width(), 1.0),
-            );
-            ui.painter().rect_filled(separator_rect, 0.0, theme.surface[3]);
-        });
-    
-    action
 }
 
 /// Render system log with modern styling
@@ -142,6 +111,44 @@ struct MessageGroup<'a> {
     is_system: bool,
 }
 
+/// Maximum time gap (in seconds) before starting a new message group.
+/// Messages from the same sender within 5 minutes are grouped together.
+const GROUP_TIME_GAP_SECONDS: u32 = 300;
+
+/// Parse a timestamp string "HH:MM:SS" into total seconds since midnight.
+/// Returns None if parsing fails.
+fn parse_timestamp_seconds(ts: &str) -> Option<u32> {
+    let parts: Vec<&str> = ts.split(':').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let hours: u32 = parts[0].parse().ok()?;
+    let minutes: u32 = parts[1].parse().ok()?;
+    let seconds: u32 = parts[2].parse().ok()?;
+    Some(hours * 3600 + minutes * 60 + seconds)
+}
+
+/// Check if two timestamps are within the grouping window (5 minutes).
+/// Handles midnight wraparound.
+fn timestamps_within_window(ts1: &str, ts2: &str) -> bool {
+    let Some(secs1) = parse_timestamp_seconds(ts1) else {
+        return false;
+    };
+    let Some(secs2) = parse_timestamp_seconds(ts2) else {
+        return false;
+    };
+
+    // Calculate difference, handling midnight wraparound
+    let diff = if secs2 >= secs1 {
+        secs2 - secs1
+    } else {
+        // Midnight crossed: add 24 hours to second timestamp
+        (secs2 + 86400) - secs1
+    };
+
+    diff <= GROUP_TIME_GAP_SECONDS
+}
+
 /// Group messages by sender for modern display
 fn group_messages(messages: &[RenderedMessage]) -> Vec<MessageGroup<'_>> {
     let mut groups: Vec<MessageGroup<'_>> = Vec::new();
@@ -163,11 +170,20 @@ fn group_messages(messages: &[RenderedMessage]) -> Vec<MessageGroup<'_>> {
             continue;
         }
 
-        // Check if we should continue the previous group
+        // Check if we should continue the previous group:
+        // - Same sender
+        // - Compatible message type
+        // - Within 5-minute time window from the *last* message in the group
         let should_group = groups.last().is_some_and(|last| {
-            !last.is_system
-                && last.sender == msg.sender
-                && matches!(msg.msg_type, MessageType::Normal | MessageType::Action | MessageType::Notice)
+            if last.is_system || last.sender != msg.sender {
+                return false;
+            }
+            if !matches!(msg.msg_type, MessageType::Normal | MessageType::Action | MessageType::Notice) {
+                return false;
+            }
+            // Check time gap from last message in the group
+            let last_msg_ts = last.messages.last().map(|m| m.timestamp.as_str()).unwrap_or(last.first_timestamp);
+            timestamps_within_window(last_msg_ts, &msg.timestamp)
         });
 
         if should_group {
@@ -299,7 +315,7 @@ fn render_message_group(
                 ui.horizontal(|ui| {
                     // Message content
                     ui.vertical(|ui| {
-                        let mention = msg.text.contains(nickname);
+                        let mention = contains_mention(&msg.text, nickname);
                         render_message_content(ui, msg, buffer, mention, theme);
                     });
                     
@@ -367,13 +383,30 @@ fn render_message_content(
             });
         }
         MessageType::Normal => {
-            // Highlight background for mentions with rounded corners
+            // Highlight background for mentions with indicator strip
             if mention {
                 let rect = ui.available_rect_before_wrap();
+                
+                // Main highlight background with rounded corners
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 26.0)),
                     6.0,
-                    Color32::from_rgba_unmultiplied(255, 180, 50, 35),
+                    Color32::from_rgba_unmultiplied(250, 166, 26, 25), // warning color, subtle
+                );
+                
+                // Left accent strip for visual indicator
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(
+                        rect.min,
+                        egui::vec2(3.0, 26.0),
+                    ),
+                    egui::CornerRadius {
+                        nw: 3,
+                        ne: 0,
+                        sw: 3,
+                        se: 0,
+                    },
+                    Color32::from_rgb(250, 166, 26), // warning color, solid
                 );
             }
 
@@ -587,5 +620,162 @@ fn parse_irc_formatting(text: &str) -> Vec<TextSpan> {
     }
 
     spans
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_timestamp_seconds() {
+        assert_eq!(parse_timestamp_seconds("00:00:00"), Some(0));
+        assert_eq!(parse_timestamp_seconds("00:00:01"), Some(1));
+        assert_eq!(parse_timestamp_seconds("00:01:00"), Some(60));
+        assert_eq!(parse_timestamp_seconds("01:00:00"), Some(3600));
+        assert_eq!(parse_timestamp_seconds("12:30:45"), Some(45045));
+        assert_eq!(parse_timestamp_seconds("23:59:59"), Some(86399));
+
+        // Invalid formats
+        assert_eq!(parse_timestamp_seconds("invalid"), None);
+        assert_eq!(parse_timestamp_seconds("12:30"), None);
+        assert_eq!(parse_timestamp_seconds(""), None);
+        assert_eq!(parse_timestamp_seconds("aa:bb:cc"), None);
+    }
+
+    #[test]
+    fn test_timestamps_within_window() {
+        // Same timestamp
+        assert!(timestamps_within_window("12:00:00", "12:00:00"));
+
+        // Within 5 minutes
+        assert!(timestamps_within_window("12:00:00", "12:04:59"));
+        assert!(timestamps_within_window("12:00:00", "12:05:00"));
+
+        // Just outside 5 minutes
+        assert!(!timestamps_within_window("12:00:00", "12:05:01"));
+        assert!(!timestamps_within_window("12:00:00", "12:10:00"));
+
+        // Test midnight wraparound
+        assert!(timestamps_within_window("23:58:00", "00:01:00")); // 3 minutes across midnight
+
+        // Invalid timestamps should return false
+        assert!(!timestamps_within_window("invalid", "12:00:00"));
+        assert!(!timestamps_within_window("12:00:00", "invalid"));
+    }
+
+    #[test]
+    fn test_group_messages_time_gap() {
+        use crate::buffer::MessageType;
+
+        let messages = vec![
+            RenderedMessage {
+                timestamp: "12:00:00".to_string(),
+                sender: "alice".to_string(),
+                text: "Hello".to_string(),
+                msg_type: MessageType::Normal,
+            },
+            RenderedMessage {
+                timestamp: "12:02:00".to_string(),
+                sender: "alice".to_string(),
+                text: "Still here".to_string(),
+                msg_type: MessageType::Normal,
+            },
+            // 10 minute gap - should start new group
+            RenderedMessage {
+                timestamp: "12:12:00".to_string(),
+                sender: "alice".to_string(),
+                text: "Back again".to_string(),
+                msg_type: MessageType::Normal,
+            },
+        ];
+
+        let groups = group_messages(&messages);
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].messages.len(), 2); // First two messages grouped
+        assert_eq!(groups[1].messages.len(), 1); // Third message in new group
+    }
+
+    #[test]
+    fn test_group_messages_different_senders() {
+        use crate::buffer::MessageType;
+
+        let messages = vec![
+            RenderedMessage {
+                timestamp: "12:00:00".to_string(),
+                sender: "alice".to_string(),
+                text: "Hello".to_string(),
+                msg_type: MessageType::Normal,
+            },
+            RenderedMessage {
+                timestamp: "12:00:30".to_string(),
+                sender: "bob".to_string(),
+                text: "Hi!".to_string(),
+                msg_type: MessageType::Normal,
+            },
+            RenderedMessage {
+                timestamp: "12:01:00".to_string(),
+                sender: "alice".to_string(),
+                text: "How are you?".to_string(),
+                msg_type: MessageType::Normal,
+            },
+        ];
+
+        let groups = group_messages(&messages);
+
+        // Each sender should get their own group
+        assert_eq!(groups.len(), 3);
+        assert_eq!(groups[0].sender, "alice");
+        assert_eq!(groups[1].sender, "bob");
+        assert_eq!(groups[2].sender, "alice");
+    }
+
+    #[test]
+    fn test_contains_mention_basic() {
+        // Basic word boundary matches
+        assert!(contains_mention("hey alice how are you", "alice"));
+        assert!(contains_mention("alice: check this out", "alice"));
+        assert!(contains_mention("hello alice!", "alice"));
+
+        // Case insensitivity
+        assert!(contains_mention("Hey ALICE, how are you?", "alice"));
+        assert!(contains_mention("Hey Alice, how are you?", "alice"));
+        assert!(contains_mention("hey alice, how are you?", "ALICE"));
+
+        // @ mentions
+        assert!(contains_mention("@alice check this out", "alice"));
+        assert!(contains_mention("hey @alice", "alice"));
+    }
+
+    #[test]
+    fn test_contains_mention_word_boundaries() {
+        // Should NOT match when nick is inside another word
+        assert!(!contains_mention("malice aforethought", "alice"));
+        assert!(!contains_mention("bobcat is cute", "bob"));
+        assert!(!contains_mention("jacoby is here", "jacob"));
+
+        // Should match at start/end of text
+        assert!(contains_mention("alice", "alice"));
+        assert!(contains_mention("hi alice", "alice"));
+        assert!(contains_mention("alice says hi", "alice"));
+
+        // Should match with punctuation
+        assert!(contains_mention("alice's message", "alice"));
+        assert!(contains_mention("(alice)", "alice"));
+        assert!(contains_mention("[alice]", "alice"));
+    }
+
+    #[test]
+    fn test_contains_mention_edge_cases() {
+        // Empty nickname should not match
+        assert!(!contains_mention("hello world", ""));
+
+        // Empty text should not match
+        assert!(!contains_mention("", "alice"));
+
+        // Single character nick
+        assert!(contains_mention("hey x what's up", "x"));
+        assert!(!contains_mention("hex is cool", "x")); // x inside word
+    }
 }
 

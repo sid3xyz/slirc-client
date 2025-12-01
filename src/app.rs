@@ -778,26 +778,14 @@ impl SlircApp {
                     .fill(chat_bg)
                     .inner_margin(12.0)
                     .show(ui, |ui| {
-                        if let Some(msg_action) = ui::messages::render_messages(
+                        ui::messages::render_messages(
                             ctx,
                             ui,
                             &self.state.active_buffer,
                             &self.state.buffers,
                             &self.state.system_log,
                             current_nick,
-                        ) {
-                            match msg_action {
-                                ui::messages::MessagePanelAction::OpenTopicEditor(channel) => {
-                                    let current_topic = self
-                                        .state
-                                        .buffers
-                                        .get(&channel)
-                                        .map(|b| b.topic.clone())
-                                        .unwrap_or_default();
-                                    self.dialogs.open_topic_editor(&channel, &current_topic);
-                                }
-                            }
-                        }
+                        );
                     });
             });
     }
