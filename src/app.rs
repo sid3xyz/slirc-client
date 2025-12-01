@@ -326,6 +326,8 @@ impl eframe::App for SlircApp {
                 &mut self.state.active_buffer,
                 &mut self.context_menu_visible,
                 &mut self.context_menu_target,
+                &mut self.state.collapsed_sections,
+                &mut self.state.channel_filter,
             );
             // Clear unread after switching buffer
             if let Some(buf) = self.state.buffers.get_mut(&self.state.active_buffer) {

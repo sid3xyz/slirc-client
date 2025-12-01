@@ -49,6 +49,12 @@ pub struct ClientState {
 
     /// Chat logger for persisting messages to disk.
     pub logger: Option<Logger>,
+
+    /// Collapsed sections in sidebar (for Phase 3 collapsible sections)
+    pub collapsed_sections: std::collections::HashSet<String>,
+
+    /// Channel search/filter text (for Phase 3 search feature)
+    pub channel_filter: String,
 }
 
 impl ClientState {
@@ -66,6 +72,8 @@ impl ClientState {
             expanded_networks: HashSet::new(),
             status_messages: Vec::new(),
             logger: Logger::new().ok(),
+            collapsed_sections: HashSet::new(),
+            channel_filter: String::new(),
         };
 
         // Create the System buffer

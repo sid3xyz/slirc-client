@@ -10,6 +10,7 @@ use crate::protocol::UserInfo;
 use crate::ui::theme::{self, SlircTheme};
 
 /// Render the left channel list panel.
+#[allow(clippy::too_many_arguments)]
 pub fn render_channel_list(
     ctx: &egui::Context,
     buffers: &HashMap<String, ChannelBuffer>,
@@ -17,6 +18,8 @@ pub fn render_channel_list(
     active_buffer: &mut String,
     context_menu_visible: &mut bool,
     context_menu_target: &mut Option<String>,
+    collapsed_sections: &mut std::collections::HashSet<String>,
+    channel_filter: &mut String,
 ) {
     let dark_mode = ctx.style().visuals.dark_mode;
     let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
@@ -57,46 +60,223 @@ pub fn render_channel_list(
             });
             ui.add_space(8.0);
 
-            // Channel list
+            // Search/filter input (Phase 3)
+            if buffers_order.len() > 3 {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(16.0);
+                    let search_response = ui.add_sized(
+                        egui::vec2(ui.available_width() - 32.0, 32.0),
+                        egui::TextEdit::singleline(channel_filter)
+                            .hint_text("🔍 Search channels...")
+                            .desired_width(f32::INFINITY),
+                    );
+                    
+                    // Clear button when text present
+                    if !channel_filter.is_empty() {
+                        ui.add_space(-28.0);
+                        if ui.small_button("✕").clicked() {
+                            channel_filter.clear();
+                        }
+                    }
+                    
+                    // Focus on Ctrl+K handled in app.rs
+                    if search_response.changed() {
+                        // Filter will be applied below
+                    }
+                });
+                ui.add_space(8.0);
+            }
+
+            // Channel list with collapsible sections (Phase 3)
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
-                    // Hint if no channels joined
-                    if buffers_order.len() <= 1 {
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            ui.label(
-                                egui::RichText::new("No channels yet")
-                                    .size(12.0)
-                                    .color(theme.text_muted)
-                                    .italics(),
-                            );
-                        });
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            ui.label(
-                                egui::RichText::new("Join one using the toolbar")
-                                    .size(11.0)
-                                    .color(theme.text_muted),
-                            );
-                        });
+                    // Filter and categorize buffers
+                    let filtered_buffers: Vec<&String> = buffers_order
+                        .iter()
+                        .filter(|name| {
+                            if channel_filter.is_empty() {
+                                true
+                            } else {
+                                name.to_lowercase().contains(&channel_filter.to_lowercase())
+                            }
+                        })
+                        .collect();
+                    
+                    let mut channels = Vec::new();
+                    let mut dms = Vec::new();
+                    let mut system = Vec::new();
+                    
+                    for name in filtered_buffers {
+                        if name.as_str() == "System" {
+                            system.push(name);
+                        } else if name.starts_with('#') || name.starts_with('&') {
+                            channels.push(name);
+                        } else {
+                            dms.push(name);
+                        }
                     }
 
-                    for name in buffers_order {
-                        let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name) {
-                            (b.unread_count, b.has_highlight, active_buffer == name)
+                    // CHANNELS section (collapsible - Phase 3)
+                    if !channels.is_empty() {
+                        let channels_collapsed = collapsed_sections.contains("channels");
+                        ui.add_space(4.0);
+                        
+                        let header_response = ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            let caret = if channels_collapsed { "▶" } else { "▼" };
+                            ui.label(
+                                egui::RichText::new(caret)
+                                    .size(9.0)
+                                    .color(theme.text_muted),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                egui::RichText::new("CHANNELS")
+                                    .size(11.0)
+                                    .strong()
+                                    .color(theme.text_muted),
+                            );
+                        }).response;
+                        
+                        if header_response.clicked() {
+                            if channels_collapsed {
+                                collapsed_sections.remove("channels");
+                            } else {
+                                collapsed_sections.insert("channels".to_string());
+                            }
+                        }
+                        
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            let sep_rect = egui::Rect::from_min_size(
+                                ui.cursor().min,
+                                egui::vec2(ui.available_width() - 32.0, 1.0),
+                            );
+                            ui.painter().rect_filled(sep_rect, 0.0, theme.surface[3]);
+                        });
+                        ui.add_space(8.0);
+                        
+                        if !channels_collapsed {
+                            for name in &channels {
+                                let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
+                                    (b.unread_count, b.has_highlight, active_buffer == name.as_str())
+                                } else {
+                                    (0, false, false)
+                                };
+
+                                ui.add_space(2.0);
+                                
+                                let clicked = render_channel_item(
+                                    ui,
+                                    name.as_str(),
+                                    unread,
+                                    has_highlight,
+                                    selected,
+                                    &theme,
+                                );
+
+                                if clicked.0 {
+                                    *active_buffer = name.to_string();
+                                }
+                                if clicked.1 {
+                                    *context_menu_visible = true;
+                                    *context_menu_target = Some(name.to_string());
+                                }
+                                
+                                ui.add_space(2.0);
+                            }
+                        }
+                    }
+
+                    // PRIVATE MESSAGES section (collapsible - Phase 3)
+                    if !dms.is_empty() {
+                        let dms_collapsed = collapsed_sections.contains("dms");
+                        ui.add_space(12.0);
+                        
+                        let header_response = ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            let caret = if dms_collapsed { "▶" } else { "▼" };
+                            ui.label(
+                                egui::RichText::new(caret)
+                                    .size(9.0)
+                                    .color(theme.text_muted),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                egui::RichText::new("PRIVATE MESSAGES")
+                                    .size(11.0)
+                                    .strong()
+                                    .color(theme.text_muted),
+                            );
+                        }).response;
+                        
+                        if header_response.clicked() {
+                            if dms_collapsed {
+                                collapsed_sections.remove("dms");
+                            } else {
+                                collapsed_sections.insert("dms".to_string());
+                            }
+                        }
+                        
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            let sep_rect = egui::Rect::from_min_size(
+                                ui.cursor().min,
+                                egui::vec2(ui.available_width() - 32.0, 1.0),
+                            );
+                            ui.painter().rect_filled(sep_rect, 0.0, theme.surface[3]);
+                        });
+                        ui.add_space(8.0);
+                        
+                        if !dms_collapsed {
+                            for name in &dms {
+                                let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
+                                    (b.unread_count, b.has_highlight, active_buffer == name.as_str())
+                                } else {
+                                    (0, false, false)
+                                };
+
+                                ui.add_space(2.0);
+                                
+                                let clicked = render_channel_item(
+                                    ui,
+                                    name.as_str(),
+                                    unread,
+                                    has_highlight,
+                                    selected,
+                                    &theme,
+                                );
+
+                                if clicked.0 {
+                                    *active_buffer = name.to_string();
+                                }
+                                if clicked.1 {
+                                    *context_menu_visible = true;
+                                    *context_menu_target = Some(name.to_string());
+                                }
+                                
+                                ui.add_space(2.0);
+                            }
+                        }
+                    }
+
+                    // System buffer (always visible, no collapse)
+                    for name in &system {
+                        let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
+                            (b.unread_count, b.has_highlight, active_buffer == name.as_str())
                         } else {
                             (0, false, false)
                         };
 
-                        // Add small spacing between items for breathing room
                         ui.add_space(2.0);
                         
                         let clicked = render_channel_item(
                             ui,
-                            name,
+                            name.as_str(),
                             unread,
                             has_highlight,
                             selected,
@@ -104,14 +284,28 @@ pub fn render_channel_list(
                         );
 
                         if clicked.0 {
-                            *active_buffer = name.clone();
+                            *active_buffer = name.to_string();
                         }
                         if clicked.1 {
                             *context_menu_visible = true;
-                            *context_menu_target = Some(name.clone());
+                            *context_menu_target = Some(name.to_string());
                         }
                         
                         ui.add_space(2.0);
+                    }
+                    
+                    // Hint if no results after filtering
+                    if !channel_filter.is_empty() && channels.is_empty() && dms.is_empty() && system.is_empty() {
+                        ui.add_space(16.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            ui.label(
+                                egui::RichText::new("No matching channels")
+                                    .size(12.0)
+                                    .color(theme.text_muted)
+                                    .italics(),
+                            );
+                        });
                     }
                 });
         });
