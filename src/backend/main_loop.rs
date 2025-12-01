@@ -1,17 +1,13 @@
 use crossbeam_channel::{Receiver, Sender};
-use slirc_proto::mode::{ChannelMode, Mode};
-use slirc_proto::{CapSubCommand, Command, Isupport, Message, Prefix, Transport};
+use slirc_proto::{CapSubCommand, Command, Message, Transport};
 use slirc_proto::sasl::{encode_plain, SaslMechanism};
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
 use tokio::time::timeout;
-use rustls::RootCertStore;
-use tokio_rustls::TlsConnector;
 
-use crate::protocol::{BackendAction, GuiEvent, UserInfo};
+use crate::protocol::{BackendAction, GuiEvent};
+use super::{connection, handlers};
 
 /// Connection registration state machine for IRCv3 CAP negotiation
 #[derive(Debug, Clone, PartialEq)]
@@ -62,21 +58,9 @@ struct PendingRegistration {
 }
 
 /// Create a TLS connector with webpki root certificates
-pub(crate) fn create_tls_connector() -> Result<TlsConnector, String> {
-    let mut root_store = RootCertStore::empty();
-    
-    // Use webpki-roots for cross-platform compatibility
-    root_store.extend(
-        webpki_roots::TLS_SERVER_ROOTS
-            .iter()
-            .cloned()
-    );
-    
-    let config = rustls::ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-    
-    Ok(TlsConnector::from(Arc::new(config)))
+#[allow(dead_code)]
+pub fn create_tls_connector() -> Result<tokio_rustls::TlsConnector, String> {
+    connection::create_tls_connector()
 }
 
 pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent>) {
@@ -145,72 +129,8 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                             "Connecting to {} via {}...", addr, protocol
                         )));
 
-                        match TcpStream::connect(&addr).await {
-                            Ok(stream) => {
-                                let transport_inst = if use_tls {
-                                    // TLS connection
-                                    let connector = match create_tls_connector() {
-                                        Ok(c) => c,
-                                        Err(e) => {
-                                            let _ = event_tx.send(GuiEvent::Error(format!(
-                                                "Failed to create TLS connector: {}",
-                                                e
-                                            )));
-                                            continue;
-                                        }
-                                    };
-                                    
-                                    // Extract hostname for SNI (remove port if present)
-                                    let hostname = server.split(':').next().unwrap_or(&server);
-                                    let server_name = match rustls::pki_types::ServerName::try_from(hostname.to_string()) {
-                                        Ok(name) => name,
-                                        Err(e) => {
-                                            let _ = event_tx.send(GuiEvent::Error(format!(
-                                                "Invalid server name for TLS: {}",
-                                                e
-                                            )));
-                                            continue;
-                                        }
-                                    };
-                                    
-                                    // Perform TLS handshake
-                                    let tls_stream = match connector.connect(server_name, stream).await {
-                                        Ok(s) => s,
-                                        Err(e) => {
-                                            let _ = event_tx.send(GuiEvent::Error(format!(
-                                                "TLS handshake failed: {}",
-                                                e
-                                            )));
-                                            continue;
-                                        }
-                                    };
-                                    
-                                    // Create client TLS transport
-                                    match Transport::client_tls(tls_stream) {
-                                        Ok(t) => t,
-                                        Err(e) => {
-                                            let _ = event_tx.send(GuiEvent::Error(format!(
-                                                "Failed to create TLS transport: {}",
-                                                e
-                                            )));
-                                            continue;
-                                        }
-                                    }
-                                } else {
-                                    // Plain TCP connection
-                                    match Transport::tcp(stream) {
-                                        Ok(t) => t,
-                                        Err(e) => {
-                                            let _ = event_tx.send(GuiEvent::Error(format!(
-                                                "Failed to create transport: {}",
-                                                e
-                                            )));
-                                            continue;
-                                        }
-                                    }
-                                };
-
-                                let mut transport_inst = transport_inst;
+                        match connection::establish_connection(&server, port, use_tls).await {
+                            Ok(mut transport_inst) => {
 
                                 // Start IRCv3 CAP negotiation
                                 let _ = event_tx.send(GuiEvent::RawMessage(
@@ -236,8 +156,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 transport = Some(transport_inst);
                             }
                             Err(e) => {
-                                let _ = event_tx
-                                    .send(GuiEvent::Error(format!("Connection failed: {}", e)));
+                                let _ = event_tx.send(GuiEvent::Error(e));
                             }
                         }
                     }
@@ -670,246 +589,13 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 let _ = event_tx.send(GuiEvent::Connected);
                             }
 
-                            // RPL_ISUPPORT (005) - Server capabilities
-                            Command::Response(code, args) if code.code() == 5 => {
-                                // Parse ISUPPORT tokens using slirc-proto
-                                let params: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-                                let isupport = Isupport::parse_params(&params);
-                                
-                                // Extract useful info and send to UI
-                                let _ = event_tx.send(GuiEvent::ServerInfo {
-                                    network: isupport.network().map(|s| s.to_string()),
-                                    casemapping: isupport.casemapping().map(|s| s.to_string()),
-                                });
-                            }
-
-                            // RPL_TOPIC (332)
-                            Command::Response(code, args) if code.code() == 332 => {
-                                if args.len() >= 3 {
-                                    let _ = event_tx.send(GuiEvent::Topic {
-                                        channel: args[1].clone(),
-                                        topic: args[2].clone(),
-                                    });
+                            // All other messages: route through handler module
+                            _ => {
+                                // Route message and potentially update current_nick
+                                if let Some(new_nick) = handlers::route_message(&message, &current_nick, &event_tx) {
+                                    current_nick = new_nick;
                                 }
                             }
-
-                            // RPL_NAMREPLY (353)
-                            Command::Response(code, args) if code.code() == 353 => {
-                                if args.len() >= 4 {
-                                    let channel = args[2].clone();
-                                    let mut names: Vec<UserInfo> = Vec::new();
-                                    for s in args[3].split_whitespace() {
-                                        let mut chars = s.chars();
-                                        let prefix = chars
-                                            .next()
-                                            .filter(|c| matches!(c, '@' | '+' | '%' | '&' | '~'));
-                                        let nick = if prefix.is_some() {
-                                            chars.as_str().to_string()
-                                        } else {
-                                            s.to_string()
-                                        };
-                                        names.push(UserInfo { nick, prefix });
-                                    }
-                                    let _ = event_tx.send(GuiEvent::Names { channel, names });
-                                }
-                            }
-
-                            // RPL_LIST (322) - channel list item
-                            Command::Response(code, args) if code.code() == 322 => {
-                                if args.len() >= 4 {
-                                    let channel = args[1].clone();
-                                    let user_count = args[2].parse::<usize>().unwrap_or(0);
-                                    let topic = args[3].clone();
-                                    let _ = event_tx.send(GuiEvent::ChannelListItem {
-                                        channel,
-                                        user_count,
-                                        topic,
-                                    });
-                                }
-                            }
-
-                            // RPL_LISTEND (323) - end of channel list
-                            Command::Response(code, _) if code.code() == 323 => {
-                                let _ = event_tx.send(GuiEvent::ChannelListEnd);
-                            }
-
-                            // RPL_MOTD (372) and RPL_MOTDSTART (375)
-                            Command::Response(code, args)
-                                if code.code() == 372 || code.code() == 375 =>
-                            {
-                                if let Some(text) = args.last() {
-                                    let _ = event_tx.send(GuiEvent::Motd(text.clone()));
-                                }
-                            }
-
-                            // PRIVMSG
-                            Command::PRIVMSG(target, text) => {
-                                let sender =
-                                    message.source_nickname().unwrap_or("unknown").to_string();
-                                let _ = event_tx.send(GuiEvent::MessageReceived {
-                                    target: target.clone(),
-                                    sender,
-                                    text: text.clone(),
-                                });
-                            }
-
-                            // NOTICE
-                            Command::NOTICE(target, text) => {
-                                let sender =
-                                    message.source_nickname().unwrap_or("server").to_string();
-                                let _ = event_tx.send(GuiEvent::MessageReceived {
-                                    target: target.clone(),
-                                    sender: format!("-{}-", sender),
-                                    text: text.clone(),
-                                });
-                            }
-
-                            // JOIN
-                            Command::JOIN(channel, _, _) => {
-                                let nick = message.source_nickname().unwrap_or("").to_string();
-                                if nick == current_nick {
-                                    let _ = event_tx.send(GuiEvent::JoinedChannel(channel.clone()));
-                                } else {
-                                    let _ = event_tx.send(GuiEvent::UserJoined {
-                                        channel: channel.clone(),
-                                        nick,
-                                    });
-                                }
-                            }
-
-                            // PART
-                            Command::PART(channel, msg) => {
-                                let nick = message.source_nickname().unwrap_or("").to_string();
-                                if nick == current_nick {
-                                    let _ = event_tx.send(GuiEvent::PartedChannel(channel.clone()));
-                                } else {
-                                    let _ = event_tx.send(GuiEvent::UserParted {
-                                        channel: channel.clone(),
-                                        nick,
-                                        message: msg.clone(),
-                                    });
-                                }
-                            }
-
-                            // NICK change (someone changed their nick)
-                            Command::NICK(newnick) => {
-                                let oldnick = message.source_nickname().unwrap_or("").to_string();
-                                // Update internal state if it was our nick
-                                if oldnick == current_nick {
-                                    current_nick = newnick.clone();
-                                }
-                                let _ = event_tx.send(GuiEvent::NickChanged {
-                                    old: oldnick.clone(),
-                                    new: newnick.clone(),
-                                });
-                            }
-
-                            // QUIT - user left the server
-                            Command::QUIT(msg) => {
-                                if let Some(Prefix::Nickname(nick, _, _)) = &message.prefix {
-                                    let _ = event_tx.send(GuiEvent::UserQuit {
-                                        nick: nick.to_string(),
-                                        message: msg.clone(),
-                                    });
-                                }
-                            }
-
-                            // ERROR from server
-                            Command::ERROR(msg) => {
-                                let _ = event_tx.send(GuiEvent::Error(msg.clone()));
-                            }
-
-                            // Channel mode changes (e.g. +o/-o): update UI user prefixes
-                            Command::ChannelMODE(channel, modes) => {
-                                for m in modes {
-                                    match m {
-                                        Mode::Plus(ChannelMode::Oper, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('@'),
-                                                added: true,
-                                            });
-                                        }
-                                        Mode::Minus(ChannelMode::Oper, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('@'),
-                                                added: false,
-                                            });
-                                        }
-                                        Mode::Plus(ChannelMode::Voice, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('+'),
-                                                added: true,
-                                            });
-                                        }
-                                        Mode::Minus(ChannelMode::Voice, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('+'),
-                                                added: false,
-                                            });
-                                        }
-                                        Mode::Plus(ChannelMode::Halfop, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('%'),
-                                                added: true,
-                                            });
-                                        }
-                                        Mode::Minus(ChannelMode::Halfop, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('%'),
-                                                added: false,
-                                            });
-                                        }
-                                        Mode::Plus(ChannelMode::Admin, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('&'),
-                                                added: true,
-                                            });
-                                        }
-                                        Mode::Minus(ChannelMode::Admin, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('&'),
-                                                added: false,
-                                            });
-                                        }
-                                        Mode::Plus(ChannelMode::Founder, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('~'),
-                                                added: true,
-                                            });
-                                        }
-                                        Mode::Minus(ChannelMode::Founder, Some(nick)) => {
-                                            let _ = event_tx.send(GuiEvent::UserMode {
-                                                channel: channel.clone(),
-                                                nick: nick.clone(),
-                                                prefix: Some('~'),
-                                                added: false,
-                                            });
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-
-                            // For other messages, we might want to log them if they are interesting
-                            _ => {}
                         }
                     }
                     Ok(Ok(None)) => {
