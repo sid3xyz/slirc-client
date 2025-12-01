@@ -86,7 +86,62 @@ pub fn render_menu_bar(
             });
         });
 
-        // Edit Menu - Removed as all items were disabled/TODO
+        // Edit Menu
+        ui.menu_button("Edit", |ui| {
+            ui.horizontal(|ui| {
+                // Note: Cut/Copy/Paste are handled by egui automatically for text inputs
+                // These menu items are for discoverability and consistency
+                if ui.add_enabled(false, egui::Button::new("Cut"))
+                    .on_hover_text("Cut selected text (handled by system)")
+                    .on_disabled_hover_text("Select text in input first")
+                    .clicked()
+                {
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+X").weak().small());
+                });
+            });
+
+            ui.horizontal(|ui| {
+                if ui.add_enabled(false, egui::Button::new("Copy"))
+                    .on_hover_text("Copy selected text (handled by system)")
+                    .on_disabled_hover_text("Select text first")
+                    .clicked()
+                {
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+C").weak().small());
+                });
+            });
+
+            ui.horizontal(|ui| {
+                if ui.add_enabled(false, egui::Button::new("Paste"))
+                    .on_hover_text("Paste from clipboard (handled by system)")
+                    .on_disabled_hover_text("Focus input first")
+                    .clicked()
+                {
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+V").weak().small());
+                });
+            });
+
+            ui.horizontal(|ui| {
+                if ui.add_enabled(false, egui::Button::new("Select All"))
+                    .on_hover_text("Select all text (handled by system)")
+                    .on_disabled_hover_text("Focus input first")
+                    .clicked()
+                {
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+A").weak().small());
+                });
+            });
+        });
 
         // View Menu
         ui.menu_button("View", |ui| {
@@ -165,6 +220,50 @@ pub fn render_menu_bar(
                         ui.label(egui::RichText::new("Ctrl+L").weak().small());
                     });
                 });
+            });
+        });
+
+        // Window Menu
+        ui.menu_button("Window", |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Minimize")
+                    .on_hover_text("Minimize window")
+                    .clicked()
+                {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+M").weak().small());
+                });
+            });
+
+            ui.horizontal(|ui| {
+                if ui.button("Toggle Fullscreen")
+                    .on_hover_text("Enter/exit fullscreen mode")
+                    .clicked()
+                {
+                    // Toggle fullscreen by checking current state
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(
+                        !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false))
+                    ));
+                    ui.close_menu();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("Ctrl+Shift+F").weak().small());
+                });
+            });
+
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                if ui.button("Bring All to Front")
+                    .on_hover_text("Bring all windows to front")
+                    .clicked()
+                {
+                    // This is primarily a macOS convention, but we include it for completeness
+                    ui.close_menu();
+                }
             });
         });
 
