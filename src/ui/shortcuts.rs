@@ -36,6 +36,7 @@ pub struct Shortcut {
     pub category: ShortcutCategory,
     pub key_text: &'static str,
     pub description: &'static str,
+    #[allow(dead_code)]
     pub action_id: &'static str,
 }
 
@@ -195,11 +196,13 @@ impl ShortcutRegistry {
     }
 
     /// Get all shortcuts
+    #[allow(dead_code)]
     pub fn all(&self) -> &[Shortcut] {
         &self.shortcuts
     }
 
     /// Find a shortcut by action ID
+    #[allow(dead_code)]
     pub fn find(&self, action_id: &str) -> Option<&Shortcut> {
         self.shortcuts.iter().find(|s| s.action_id == action_id)
     }

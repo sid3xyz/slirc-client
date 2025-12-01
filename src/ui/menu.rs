@@ -26,7 +26,7 @@ pub fn render_menu_bar(
     action_tx: &crossbeam_channel::Sender<BackendAction>,
 ) -> Option<MenuAction> {
     let mut menu_action: Option<MenuAction> = None;
-    
+
     egui::menu::bar(ui, |ui| {
         // File Menu
         ui.menu_button("File", |ui| {
@@ -296,6 +296,6 @@ pub fn render_menu_bar(
             });
         });
     });
-    
+
     menu_action
 }

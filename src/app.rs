@@ -21,6 +21,7 @@ use crate::ui;
 use crate::ui::dialogs::{
     ChannelListItem, DialogAction,
 };
+use crate::ui::shortcuts::ShortcutRegistry;
 
 pub struct SlircApp {
     // Core state (buffers, networks, connection status, etc.)
@@ -53,6 +54,10 @@ pub struct SlircApp {
 
     // Dialogs - managed centrally by DialogManager
     pub dialogs: DialogManager,
+
+    // Keyboard shortcuts registry
+    pub shortcuts: ShortcutRegistry,
+    pub show_shortcuts_help: bool,
 }
 
 impl SlircApp {
@@ -112,6 +117,10 @@ impl SlircApp {
 
             // Dialogs - managed centrally by DialogManager
             dialogs: DialogManager::new(),
+
+            // Keyboard shortcuts
+            shortcuts: ShortcutRegistry::new(),
+            show_shortcuts_help: false,
         };
 
         // Restore settings if present
@@ -280,6 +289,23 @@ impl eframe::App for SlircApp {
             if i.key_pressed(egui::Key::F1) {
                 self.dialogs.toggle_help();
             }
+            // Ctrl+/: Toggle shortcuts help overlay
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::Slash) {
+                self.show_shortcuts_help = !self.show_shortcuts_help;
+            }
+            // Ctrl+M: Minimize window
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::M) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
+            // Ctrl+Shift+F: Toggle fullscreen
+            if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::F) {
+                let current_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!current_fullscreen));
+            }
+            // Ctrl+B: Toggle channel list
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::B) {
+                self.show_channel_list = !self.show_channel_list;
+            }
         });
 
         // Request repaint to keep checking for events
@@ -347,6 +373,9 @@ impl eframe::App for SlircApp {
                 buffer.has_highlight = false;
             }
         }
+
+        // Shortcuts help overlay (Ctrl+/ or F1)
+        self.shortcuts.render_help_overlay(ctx, &mut self.show_shortcuts_help);
     }
 }
 
@@ -452,7 +481,7 @@ impl SlircApp {
                             self.dialogs.open_network_manager(self.state.networks.clone());
                         }
                         ui::menu::MenuAction::Help => {
-                            self.dialogs.show_help();
+                            self.show_shortcuts_help = true;
                         }
                         ui::menu::MenuAction::ChannelBrowser => {
                             self.dialogs.open_channel_browser();

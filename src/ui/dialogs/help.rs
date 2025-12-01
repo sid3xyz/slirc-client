@@ -21,6 +21,7 @@ impl HelpDialog {
     }
 
     /// Show the dialog
+    #[allow(dead_code)]
     pub fn show(&mut self) {
         self.open = true;
     }
@@ -39,7 +40,7 @@ impl HelpDialog {
             .show(ctx, |ui| {
                 ui.heading("Shortcuts & Commands");
                 ui.separator();
-                
+
                 ui.label("Keyboard Shortcuts:");
                 ui.label("  • F1: Toggle this help dialog");
                 ui.label("  • Ctrl+N: Next channel");
@@ -49,9 +50,9 @@ impl HelpDialog {
                 ui.label("  • Tab: Auto-complete nicks/channels/commands");
                 ui.label("  • ↑/↓: Navigate input history");
                 ui.label("  • Esc: Clear input");
-                
+
                 ui.separator();
-                
+
                 ui.label("Slash commands:");
                 ui.label("  /join <#channel> - join a channel");
                 ui.label("  /part [#channel] - leave a channel");
@@ -81,10 +82,10 @@ mod tests {
     fn test_help_dialog_toggle() {
         let mut dialog = HelpDialog::new();
         assert!(!dialog.open);
-        
+
         dialog.toggle();
         assert!(dialog.open);
-        
+
         dialog.toggle();
         assert!(!dialog.open);
     }
@@ -92,10 +93,10 @@ mod tests {
     #[test]
     fn test_help_dialog_show_hide() {
         let mut dialog = HelpDialog::new();
-        
+
         dialog.show();
         assert!(dialog.open);
-        
+
         // Toggle off (equivalent to hide)
         dialog.toggle();
         assert!(!dialog.open);

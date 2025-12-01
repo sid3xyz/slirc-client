@@ -96,6 +96,9 @@ mod tests {
             quick_switcher: crate::ui::quick_switcher::QuickSwitcher::default(),
             // Dialogs - managed centrally by DialogManager
             dialogs: crate::dialog_manager::DialogManager::new(),
+            // Keyboard shortcuts
+            shortcuts: crate::ui::shortcuts::ShortcutRegistry::new(),
+            show_shortcuts_help: false,
         };
         (app, event_tx, action_rx)
     }

@@ -12,12 +12,14 @@
 ### Completed Refactoring (8 Steps)
 
 #### Step 1-2: Dead Code Cleanup & Consolidation ✅
+
 - Removed unused keyring functions (`save_nickserv_password`, `delete_nickserv_password`)
 - Removed `test_password_storage_interface` test
 - Consolidated `ensure_buffer()` logic (removed duplicate from `events.rs`)
 - **Reduced:** 94 lines of dead code removed
 
 #### Step 3: InputState Module ✅
+
 **Created:** `input_state.rs` (419 lines)
 - Extracted all input handling from SlircApp
 - Features: message composition, command history, tab completion
@@ -25,6 +27,7 @@
 - **Reduced:** SlircApp by 224 lines, improved testability
 
 #### Step 4: DialogManager Module ✅
+
 **Created:** `dialog_manager.rs` (200+ lines)
 - Consolidated 5 dialog Option fields into single manager
 - Centralized dialog state with convenience methods
@@ -32,6 +35,7 @@
 - **Improved:** Dialog management patterns, reduced cognitive load
 
 #### Step 5: UI Method Extraction ✅
+
 **Reduced:** `update()` method from 610 lines → 89 lines (85% reduction)
 - `render_menu_bar()` - Menu actions (30 lines)
 - `render_toolbar()` - Toolbar with connect/nick (30 lines)
@@ -42,6 +46,7 @@
 - **Improved:** Code organization, maintainability, readability
 
 #### Step 6: ConnectionConfig Struct ✅
+
 **Created:** `ConnectionConfig` in `config.rs` (47 lines)
 - Grouped `server_input`, `nickname_input`, `use_tls` into single struct
 - Added `parse_server()` method for TLS-aware port defaults
@@ -50,6 +55,7 @@
 - **Benefits:** Improved encapsulation, reduced parameter counts, type safety
 
 #### Step 7: Backend Modular Extraction ✅
+
 **Refactored:** `backend.rs` (946 lines → 632 lines, -33%)
 - **Created modules:**
   - `backend/connection.rs` (75 lines): TLS/TCP connection setup
@@ -64,6 +70,7 @@
 - **Benefits:** Improved maintainability, testability, reusability
 
 #### Step 8: Integration & Documentation ✅
+
 - **Tests:** All 106 tests passing
 - **Clippy:** Zero warnings with `-D warnings`
 - **Build:** Clean workspace build
@@ -72,7 +79,8 @@
 ### Architecture Summary
 
 **Before Refactoring:**
-```
+
+```text
 app.rs (1090 lines) - Monolithic SlircApp
 backend.rs (946 lines) - Giant run_backend()
 events.rs - Duplicate ensure_buffer()
@@ -80,7 +88,8 @@ config.rs - Dead keyring code
 ```
 
 **After Refactoring:**
-```
+
+```text
 app.rs (932 lines) - Modular SlircApp with extracted methods
   ├─ input_state.rs (419 lines) - Input handling
   └─ dialog_manager.rs (200 lines) - Dialog management

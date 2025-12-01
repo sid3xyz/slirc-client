@@ -61,6 +61,7 @@ impl DialogManager {
     }
 
     /// Show the help dialog.
+    #[allow(dead_code)]
     pub fn show_help(&mut self) {
         self.help_dialog.show();
     }
