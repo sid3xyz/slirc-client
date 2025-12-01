@@ -3,6 +3,14 @@ name = "slirc-client"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "slirc_client"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slirc-client"
+path = "src/main.rs"
+
 [dependencies]
 # GUI
 eframe = { version = "0.31", default-features = false, features = [
@@ -13,11 +21,19 @@ eframe = { version = "0.31", default-features = false, features = [
 ] }
 
 # Async runtime for the network backend
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "sync",
+    "macros",
+    "time",
+] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
 # IRC Protocol library
-slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto.git", features = ["tokio"] }
+slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto.git", features = [
+    "tokio",
+] }
 
 # Channels for UI <-> Backend communication
 crossbeam-channel = "0.5"

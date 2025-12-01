@@ -1,5 +1,5 @@
 //! Chat logging persistence layer
-//! 
+//!
 //! Provides file-based logging of IRC messages organized by network and channel.
 //! Logs are stored in XDG_DATA_HOME/slirc-client/logs/ with the structure:
 //! logs/network/channel/YYYY-MM-DD.log
@@ -26,41 +26,32 @@ pub struct LogEntry {
 pub struct Logger {
     /// Channel to send log entries to the background thread
     tx: Sender<LogEntry>,
-    /// Base directory for all logs
-    #[allow(dead_code)]
-    log_dir: PathBuf,
 }
 
 impl Logger {
     /// Create a new logger and spawn background thread for async I/O
     pub fn new() -> Result<Self, String> {
         let log_dir = get_log_directory()?;
-        
+
         // Create log directory if it doesn't exist
         fs::create_dir_all(&log_dir)
             .map_err(|e| format!("Failed to create log directory: {}", e))?;
-        
+
         let (tx, rx) = unbounded::<LogEntry>();
-        
+
         // Spawn background thread for non-blocking I/O
         let log_dir_clone = log_dir.clone();
         thread::spawn(move || {
             run_logger_thread(rx, log_dir_clone);
         });
-        
-        Ok(Self { tx, log_dir })
+
+        Ok(Self { tx })
     }
-    
+
     /// Log a message (non-blocking, queued for background writing)
     pub fn log(&self, entry: LogEntry) {
         // If send fails, the logger thread has stopped - silently ignore
         let _ = self.tx.send(entry);
-    }
-    
-    /// Get the log directory path
-    #[allow(dead_code)]
-    pub fn log_directory(&self) -> &PathBuf {
-        &self.log_dir
     }
 }
 
@@ -68,14 +59,14 @@ impl Logger {
 fn run_logger_thread(rx: Receiver<LogEntry>, log_dir: PathBuf) {
     // Cache of open file handles to avoid reopening files constantly
     let mut file_cache: HashMap<String, BufWriter<File>> = HashMap::new();
-    
+
     // Process log entries as they arrive
     while let Ok(entry) = rx.recv() {
         if let Err(e) = write_log_entry(&mut file_cache, &log_dir, &entry) {
             eprintln!("Logger error: {}", e);
         }
     }
-    
+
     // Flush all cached files on shutdown
     for (_, mut writer) in file_cache.drain() {
         let _ = writer.flush();
@@ -92,14 +83,14 @@ fn write_log_entry(
     let date = Local::now().format("%Y-%m-%d").to_string();
     let sanitized_network = sanitize_filename(&entry.network);
     let sanitized_channel = sanitize_filename(&entry.channel);
-    
+
     let channel_dir = log_dir.join(&sanitized_network).join(&sanitized_channel);
     fs::create_dir_all(&channel_dir)
         .map_err(|e| format!("Failed to create channel directory: {}", e))?;
-    
+
     let log_file_path = channel_dir.join(format!("{}.log", date));
     let cache_key = format!("{}/{}/{}", sanitized_network, sanitized_channel, date);
-    
+
     // Get or create buffered writer for this file
     let writer = if let Some(w) = file_cache.get_mut(&cache_key) {
         w
@@ -109,19 +100,19 @@ fn write_log_entry(
             .append(true)
             .open(&log_file_path)
             .map_err(|e| format!("Failed to open log file: {}", e))?;
-        
+
         file_cache.insert(cache_key.clone(), BufWriter::new(file));
         file_cache.get_mut(&cache_key).unwrap()
     };
-    
+
     // Format: [HH:MM:SS] <Nick> Message
     writeln!(writer, "[{}] <{}> {}", entry.timestamp, entry.nick, entry.message)
         .map_err(|e| format!("Failed to write log entry: {}", e))?;
-    
+
     // Flush periodically to ensure logs are written
     writer.flush()
         .map_err(|e| format!("Failed to flush log: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -129,7 +120,7 @@ fn write_log_entry(
 fn get_log_directory() -> Result<PathBuf, String> {
     let base = directories::BaseDirs::new()
         .ok_or("Failed to determine home directory")?;
-    
+
     // Use XDG_DATA_HOME on Linux, equivalent on other platforms
     let data_dir = base.data_dir();
     Ok(data_dir.join("slirc-client").join("logs"))
@@ -149,14 +140,14 @@ fn sanitize_filename(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_sanitize_filename() {
         assert_eq!(sanitize_filename("#rust"), "_rust");
         assert_eq!(sanitize_filename("irc.libera.chat"), "irc.libera.chat");
         assert_eq!(sanitize_filename("test/path"), "test_path");
     }
-    
+
     #[test]
     fn test_log_directory_exists() {
         let result = get_log_directory();

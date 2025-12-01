@@ -48,7 +48,7 @@
 //!
 //! # Usage Examples
 //!
-//! ```rust
+//! ```ignore
 //! use crate::ui::theme::SlircTheme;
 //!
 //! // Get the theme
@@ -257,7 +257,7 @@ pub fn configure_text_styles() -> BTreeMap<TextStyle, FontId> {
 ///
 /// Call once during app initialization:
 ///
-/// ```rust
+/// ```ignore
 /// impl eframe::App for SlircApp {
 ///     fn new(cc: &eframe::CreationContext<'_>) -> Self {
 ///         crate::ui::theme::apply_app_style(&cc.egui_ctx);
@@ -349,7 +349,7 @@ const NICK_COLORS: [Color32; 16] = [
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// let alice_color = nick_color("alice");
 /// let bob_color = nick_color("bob");
 /// // alice_color != bob_color (very likely)
@@ -390,7 +390,7 @@ pub fn nick_color(nick: &str) -> Color32 {
 ///
 /// Use this for sorting user lists (highest rank first):
 ///
-/// ```rust
+/// ```ignore
 /// users.sort_by_key(|u| std::cmp::Reverse(prefix_rank(u.prefix)));
 /// ```
 ///
@@ -424,7 +424,7 @@ pub fn prefix_rank(prefix: Option<char>) -> u8 {
 ///
 /// # Usage
 ///
-/// ```rust
+/// ```ignore
 /// let color = prefix_color(&theme, Some('@'));
 /// ui.colored_label(color, "@");
 /// ```

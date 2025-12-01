@@ -218,33 +218,7 @@ impl InputState {
         }
     }
 
-    /// Reset completion state when input changes.
-    #[allow(dead_code)]
-    pub fn check_and_reset_completion(&mut self) {
-        if self.last_input_text != self.message_input {
-            self.completions.clear();
-            self.completion_index = None;
-            self.completion_prefix = None;
-        }
-        self.last_input_text = self.message_input.clone();
-    }
 
-    /// Clear all input fields and reset state.
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.message_input.clear();
-        self.history_pos = None;
-        self.history_saved_input = None;
-        self.completions.clear();
-        self.completion_index = None;
-        self.completion_prefix = None;
-    }
-
-    /// Add a message to history.
-    #[allow(dead_code)]
-    pub fn add_to_history(&mut self, message: String) {
-        self.history.push(message);
-    }
 }
 
 #[cfg(test)]
