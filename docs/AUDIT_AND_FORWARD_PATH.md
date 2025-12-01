@@ -1,8 +1,143 @@
 # SLIRC-Client Audit & Forward Path
 
-**Date:** November 30, 2025  
-**Status:** Phase 1 Complete - Architecture Modernization ✅  
+**Date:** November 30, 2025
+**Status:** Phase 1 Complete - Architecture Modernization ✅
 **Next Phase:** UI/UX Implementation
+
+---
+
+## ⚠️ MANDATORY: Purge-on-Replace Principle
+
+**CRITICAL DISCIPLINE** - This principle prevents technical debt accumulation during modernization.
+
+### The Rule
+
+**When you replace ANY code with a new implementation:**
+
+1. ✅ Verify new code works (tests pass)
+2. 🗑️ **DELETE the old code IMMEDIATELY** in the same commit
+3. 🔍 Search for dead code before committing
+4. 📝 Document deletion in commit message
+
+### Why This Is Critical
+
+**Previous Issue:** `src/backend.rs` (946 lines) existed alongside `src/backend/` directory for weeks, causing:
+
+- Developer confusion about which code was authoritative
+- Duplicate logic that diverged over time
+- Wasted effort reviewing/maintaining dead code
+- Risk of accidentally editing the wrong file
+
+**Zero Tolerance Policy:** Git history is sufficient backup. Dead code has no place in the codebase.
+
+### Enforcement Workflow
+
+**Before Every Commit:**
+
+```bash
+# 1. Search for suspicious patterns
+rg "TODO.*old.*code|DEPRECATED|FIXME.*remove" src/
+rg "fn .*_old\b|struct .*Old|mod .*_legacy" src/
+
+# 2. Check for duplicate functionality
+fd -e rs | xargs wc -l | sort -rn | head -20  # Large files might indicate duplication
+
+# 3. Verify no orphaned imports
+cargo clippy --workspace -- -W unused_imports -W dead_code
+```
+
+**Commit Message Template:**
+
+```text
+feat(phase-N): implement new [feature]
+
+Changes:
+
+- Added [new implementation details]
+- DELETED [old file/function] (X lines removed)
+
+Purge checklist:
+
+- [x] Verified no references to old code (rg "old_function_name")
+- [x] Removed old imports
+- [x] Tests pass with old code deleted
+- [x] Clippy clean
+```
+
+### Phase-Specific Purge Targets
+
+**Phase 2 (Menu Bar):**
+
+- DELETE: Old menu rendering code in `app.rs::render_menu_bar()`
+- DELETE: Old shortcut handling in `app.rs`
+- VERIFY: No orphaned `KeyboardShortcut` structs
+
+**Phase 3 (Toolbar):**
+
+- DELETE: Old toolbar code in `app.rs::render_toolbar()`
+- DELETE: Old button styling code
+- VERIFY: No duplicate icon rendering logic
+
+**Phase 4 (Sidebar):**
+
+- DELETE: Old network/channel list rendering
+- DELETE: Old tree state management
+- VERIFY: No orphaned `NetworkTree` structures
+
+**Phase 5 (Chat Area):**
+
+- DELETE: Old message rendering in `ui/messages.rs`
+- DELETE: Old scrollback logic
+- VERIFY: No duplicate `MessageView` components
+
+**Phase 6 (Input Area):**
+
+- DELETE: Old input handling in `app.rs`
+- DELETE: Old autocomplete logic
+- VERIFY: No duplicate `InputState` patterns
+
+**Phase 7 (Status Bar):**
+
+- DELETE: Old status display code
+- DELETE: Old connection indicator logic
+- VERIFY: No orphaned status structs
+
+**Phase 8 (Dialogs):**
+
+- DELETE: Old dialog implementations in `ui/dialogs/`
+- DELETE: Old modal management
+- VERIFY: No duplicate `DialogManager` patterns
+
+### Examples
+
+**❌ INCORRECT (leaves dead code):**
+
+```rust
+// src/ui/menu.rs - NEW implementation
+pub fn render_modern_menu(ui: &mut Ui) { ... }
+
+// src/app.rs - OLD code still exists!
+fn render_menu_bar(&mut self, ui: &mut Ui) { ... }  // ⚠️ DEAD CODE
+```
+
+**✅ CORRECT (immediate deletion):**
+
+```rust
+// src/ui/menu.rs - NEW implementation
+pub fn render_modern_menu(ui: &mut Ui) { ... }
+
+// src/app.rs - OLD CODE DELETED
+// (nothing remains, git shows deletion)
+```
+
+**Commit shows:**
+
+```diff
+- fn render_menu_bar(&mut self, ui: &mut Ui) {
+-     // ... 50 lines deleted
+- }
++ // Now uses ui::menu::render_modern_menu()
+```
 
 ---
 
@@ -11,6 +146,7 @@
 The slirc-client has successfully completed a comprehensive architectural refactoring (8 steps, 9 commits) that removed technical debt and established a clean, modular foundation. The codebase is now ready for UI/UX modernization based on the comprehensive design plan.
 
 **Key Achievements:**
+
 - ✅ 922-line `app.rs` with clean separation of concerns
 - ✅ Modular backend (632-line main loop, extracted connection/handlers)
 - ✅ Zero clippy warnings, 106 tests passing
@@ -23,7 +159,8 @@ The slirc-client has successfully completed a comprehensive architectural refact
 ### 1. Code Quality Metrics
 
 **File Sizes (lines):**
-```
+
+```text
 922  src/app.rs                    ⚠️  Large but well-structured
 749  src/main.rs                   ⚠️  Mostly tests (610 lines)
 632  src/backend/main_loop.rs      ✅  Reduced from 946 (-33%)
@@ -35,12 +172,14 @@ The slirc-client has successfully completed a comprehensive architectural refact
 ```
 
 **Test Coverage:**
+
 - 14 test modules across codebase
 - 106 tests passing
 - Coverage areas: backend, validation, dialogs, UI components
 - Missing: Integration tests for full workflow
 
 **Dependencies:**
+
 - 16 direct dependencies (lean, focused)
 - Modern stack: tokio, rustls, egui 0.31, slirc-proto 1.3.0
 - No bloat or unnecessary crates
@@ -48,6 +187,7 @@ The slirc-client has successfully completed a comprehensive architectural refact
 ### 2. Architecture Assessment
 
 **Strengths:**
+
 - ✅ Clear module boundaries (app, backend, ui, state)
 - ✅ Extracted concerns (InputState, DialogManager, ConnectionConfig)
 - ✅ Backend properly async with tokio
@@ -104,8 +244,8 @@ The slirc-client has successfully completed a comprehensive architectural refact
 ## Forward Path: 3 Strategic Options
 
 ### Option A: Polish Current Implementation (Conservative)
-**Timeline:** 2-3 weeks  
-**Risk:** Low  
+**Timeline:** 2-3 weeks
+**Risk:** Low
 **Impact:** Medium
 
 **Goals:**
@@ -128,8 +268,8 @@ The slirc-client has successfully completed a comprehensive architectural refact
 ---
 
 ### Option B: Full UI/UX Modernization (Recommended)
-**Timeline:** 6-8 weeks  
-**Risk:** Medium  
+**Timeline:** 6-8 weeks
+**Risk:** Medium
 **Impact:** High
 
 Follow the 8-phase plan from `MODERN_UI_DESIGN_PLAN.md`:
@@ -243,8 +383,8 @@ Follow the 8-phase plan from `MODERN_UI_DESIGN_PLAN.md`:
 ---
 
 ### Option C: Hybrid Approach (Pragmatic)
-**Timeline:** 4-5 weeks  
-**Risk:** Low-Medium  
+**Timeline:** 4-5 weeks
+**Risk:** Low-Medium
 **Impact:** High
 
 **Strategy:** Implement high-impact, low-effort improvements first
@@ -388,8 +528,8 @@ Follow the 8-phase plan from `MODERN_UI_DESIGN_PLAN.md`:
 
 ## Conclusion
 
-**Status:** Ready to proceed with Phase 1  
-**Confidence:** High - architecture is solid, design is documented, path is clear  
+**Status:** Ready to proceed with Phase 1
+**Confidence:** High - architecture is solid, design is documented, path is clear
 **Recommendation:** Begin Phase 1 (Foundation) immediately
 
 The refactoring has successfully created the foundation needed for rapid UI development. The forward path is clear, documented, and achievable. Time to build a modern IRC client that users will love.
