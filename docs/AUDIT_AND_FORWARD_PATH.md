@@ -1,8 +1,9 @@
 # SLIRC-Client Audit & Forward Path
 
 **Date:** November 30, 2025
-**Status:** Phase 1 Complete - Architecture Modernization ✅
-**Next Phase:** UI/UX Implementation
+**Status:** Phase 1-3 Complete - Architecture + Menu + Sidebar ✅
+**Current Phase:** Visual Testing & Phase 4 Planning
+**Next Phase:** Topic Bar Enhancement
 
 ---
 
@@ -274,7 +275,9 @@ The slirc-client has successfully completed a comprehensive architectural refact
 
 Follow the 8-phase plan from `MODERN_UI_DESIGN_PLAN.md`:
 
-#### Phase 1: Foundation (Week 1-2) - 20 hours
+#### Phase 1: Foundation (Week 1-2) - 20 hours ✅ COMPLETE
+
+**Status:** Complete - Fonts bundled, theme system established
 - Download and bundle Inter + JetBrains Mono fonts
 - Implement 7-level surface hierarchy in SlircTheme
 - Create semantic text styles (irc_message, irc_nick, irc_timestamp, etc.)
@@ -286,18 +289,24 @@ Follow the 8-phase plan from `MODERN_UI_DESIGN_PLAN.md`:
 - Enhanced `SlircTheme` with surface[0..6] colors
 - Updated `fonts.rs` with custom font loading
 
-#### Phase 2: Top Menu Bar (Week 2-3) - 16 hours
+#### Phase 2: Top Menu Bar (Week 2-3) - 16 hours ✅ COMPLETE
+
+**Status:** Complete - Full menu system with keyboard shortcuts implemented
 - Implement full menu structure (File, Edit, View, Server, Window, Help)
 - Add keyboard shortcut system
 - Create shortcut overlay (Ctrl+/ to display)
 - Platform-specific menu adaptations (macOS vs others)
 
 **Deliverables:**
-- Enhanced `ui/menu.rs` with complete menu tree
-- Keyboard shortcut registry
-- Help overlay dialog
+- ✅ Enhanced `ui/menu.rs` with complete menu tree (303 lines)
+- ✅ Keyboard shortcut registry (`ui/shortcuts.rs`, 332 lines, 20 shortcuts)
+- ✅ Help overlay dialog (Ctrl+/ or F1)
+- ✅ Documentation (`docs/MENU_ARCHITECTURE.md`, 395 lines)
+- ✅ Git commit f0053b1 (2024-11-30)
 
-#### Phase 3: Sidebar Modernization (Week 3-4) - 24 hours
+#### Phase 3: Sidebar Modernization (Week 3-4) - 24 hours ✅ COMPLETE
+
+**Status:** Complete - Collapsible sections, search/filter, enhanced layout
 - Refactor channel list with proper spacing (32px items)
 - Add collapsible sections for servers
 - Implement unread badges and mention indicators
@@ -305,9 +314,12 @@ Follow the 8-phase plan from `MODERN_UI_DESIGN_PLAN.md`:
 - Channel search/filter functionality
 
 **Deliverables:**
-- Enhanced `ui/panels.rs` with modern channel list
-- Badge component for unread counts
-- Search/filter UI
+- ✅ Enhanced `ui/panels.rs` with modern channel list (+154 lines)
+- ✅ Collapsible CHANNELS and PRIVATE MESSAGES sections
+- ✅ Search/filter UI (activates for 4+ channels, clear button)
+- ✅ Channel categorization (channels, DMs, system)
+- ✅ State management (collapsed_sections, channel_filter in ClientState)
+- ✅ Git commit 302cfbb (2024-11-30)
 
 #### Phase 4: Message Area (Week 4-5) - 28 hours
 - Implement message grouping (5-minute window, cozy mode)

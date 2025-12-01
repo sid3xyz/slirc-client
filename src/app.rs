@@ -717,12 +717,12 @@ impl SlircApp {
     /// Render the central panel with messages
     fn render_central_panel(&mut self, ctx: &egui::Context) {
         let theme = self.get_theme();
-        let chat_bg = theme.surface[2];
+        let chat_bg = theme.surface[0]; // Base surface for messages
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(chat_bg)
-                    .inner_margin(12.0),
+                    .inner_margin(0.0),
             )
             .show(ctx, |ui| {
                 // Use state.our_nick if connected, otherwise fall back to UI input
@@ -731,24 +731,74 @@ impl SlircApp {
                 } else {
                     &self.state.our_nick
                 };
-                if let Some(msg_action) = ui::messages::render_messages(
-                    ctx,
+
+                // Render topic bar for channels (above messages)
+                if let Some(topic_action) = ui::topic_bar::render_topic_bar(
                     ui,
                     &self.state.active_buffer,
                     &self.state.buffers,
-                    &self.state.system_log,
                     current_nick,
+                    &theme,
+                    &mut self.state.system_log,
                 ) {
-                    match msg_action {
-                        ui::messages::MessagePanelAction::OpenTopicEditor(channel) => {
-                            let current_topic = self.state.buffers
+                    match topic_action {
+                        ui::topic_bar::TopicBarAction::EditTopic(channel) => {
+                            let current_topic = self
+                                .state
+                                .buffers
                                 .get(&channel)
                                 .map(|b| b.topic.clone())
                                 .unwrap_or_default();
                             self.dialogs.open_topic_editor(&channel, &current_topic);
                         }
+                        ui::topic_bar::TopicBarAction::ToggleMute => {
+                            if let Some(buffer) =
+                                self.state.buffers.get_mut(&self.state.active_buffer)
+                            {
+                                buffer.notifications_muted = !buffer.notifications_muted;
+                            }
+                        }
+                        ui::topic_bar::TopicBarAction::OpenSearch => {
+                            // TODO: Implement channel search (Phase 6)
+                            self.state
+                                .system_log
+                                .push("Search not implemented yet".to_string());
+                        }
+                        ui::topic_bar::TopicBarAction::ShowPinned => {
+                            // TODO: Implement pinned messages view
+                            self.state
+                                .system_log
+                                .push("Pinned messages not implemented yet".to_string());
+                        }
                     }
                 }
+
+                // Messages panel with inner margin
+                egui::Frame::new()
+                    .fill(chat_bg)
+                    .inner_margin(12.0)
+                    .show(ui, |ui| {
+                        if let Some(msg_action) = ui::messages::render_messages(
+                            ctx,
+                            ui,
+                            &self.state.active_buffer,
+                            &self.state.buffers,
+                            &self.state.system_log,
+                            current_nick,
+                        ) {
+                            match msg_action {
+                                ui::messages::MessagePanelAction::OpenTopicEditor(channel) => {
+                                    let current_topic = self
+                                        .state
+                                        .buffers
+                                        .get(&channel)
+                                        .map(|b| b.topic.clone())
+                                        .unwrap_or_default();
+                                    self.dialogs.open_topic_editor(&channel, &current_topic);
+                                }
+                            }
+                        }
+                    });
             });
     }
 

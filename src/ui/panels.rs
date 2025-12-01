@@ -48,7 +48,7 @@ pub fn render_channel_list(
                 );
             });
             ui.add_space(6.0);
-            
+
             // Subtle separator line
             ui.horizontal(|ui| {
                 ui.add_space(16.0);
@@ -71,7 +71,7 @@ pub fn render_channel_list(
                             .hint_text("🔍 Search channels...")
                             .desired_width(f32::INFINITY),
                     );
-                    
+
                     // Clear button when text present
                     if !channel_filter.is_empty() {
                         ui.add_space(-28.0);
@@ -79,7 +79,7 @@ pub fn render_channel_list(
                             channel_filter.clear();
                         }
                     }
-                    
+
                     // Focus on Ctrl+K handled in app.rs
                     if search_response.changed() {
                         // Filter will be applied below
@@ -103,11 +103,11 @@ pub fn render_channel_list(
                             }
                         })
                         .collect();
-                    
+
                     let mut channels = Vec::new();
                     let mut dms = Vec::new();
                     let mut system = Vec::new();
-                    
+
                     for name in filtered_buffers {
                         if name.as_str() == "System" {
                             system.push(name);
@@ -122,7 +122,7 @@ pub fn render_channel_list(
                     if !channels.is_empty() {
                         let channels_collapsed = collapsed_sections.contains("channels");
                         ui.add_space(4.0);
-                        
+
                         let header_response = ui.horizontal(|ui| {
                             ui.add_space(16.0);
                             let caret = if channels_collapsed { "▶" } else { "▼" };
@@ -139,7 +139,7 @@ pub fn render_channel_list(
                                     .color(theme.text_muted),
                             );
                         }).response;
-                        
+
                         if header_response.clicked() {
                             if channels_collapsed {
                                 collapsed_sections.remove("channels");
@@ -147,7 +147,7 @@ pub fn render_channel_list(
                                 collapsed_sections.insert("channels".to_string());
                             }
                         }
-                        
+
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             ui.add_space(16.0);
@@ -158,7 +158,7 @@ pub fn render_channel_list(
                             ui.painter().rect_filled(sep_rect, 0.0, theme.surface[3]);
                         });
                         ui.add_space(8.0);
-                        
+
                         if !channels_collapsed {
                             for name in &channels {
                                 let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
@@ -168,7 +168,7 @@ pub fn render_channel_list(
                                 };
 
                                 ui.add_space(2.0);
-                                
+
                                 let clicked = render_channel_item(
                                     ui,
                                     name.as_str(),
@@ -185,7 +185,7 @@ pub fn render_channel_list(
                                     *context_menu_visible = true;
                                     *context_menu_target = Some(name.to_string());
                                 }
-                                
+
                                 ui.add_space(2.0);
                             }
                         }
@@ -195,7 +195,7 @@ pub fn render_channel_list(
                     if !dms.is_empty() {
                         let dms_collapsed = collapsed_sections.contains("dms");
                         ui.add_space(12.0);
-                        
+
                         let header_response = ui.horizontal(|ui| {
                             ui.add_space(16.0);
                             let caret = if dms_collapsed { "▶" } else { "▼" };
@@ -212,7 +212,7 @@ pub fn render_channel_list(
                                     .color(theme.text_muted),
                             );
                         }).response;
-                        
+
                         if header_response.clicked() {
                             if dms_collapsed {
                                 collapsed_sections.remove("dms");
@@ -220,7 +220,7 @@ pub fn render_channel_list(
                                 collapsed_sections.insert("dms".to_string());
                             }
                         }
-                        
+
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             ui.add_space(16.0);
@@ -231,7 +231,7 @@ pub fn render_channel_list(
                             ui.painter().rect_filled(sep_rect, 0.0, theme.surface[3]);
                         });
                         ui.add_space(8.0);
-                        
+
                         if !dms_collapsed {
                             for name in &dms {
                                 let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
@@ -241,7 +241,7 @@ pub fn render_channel_list(
                                 };
 
                                 ui.add_space(2.0);
-                                
+
                                 let clicked = render_channel_item(
                                     ui,
                                     name.as_str(),
@@ -258,7 +258,7 @@ pub fn render_channel_list(
                                     *context_menu_visible = true;
                                     *context_menu_target = Some(name.to_string());
                                 }
-                                
+
                                 ui.add_space(2.0);
                             }
                         }
@@ -273,7 +273,7 @@ pub fn render_channel_list(
                         };
 
                         ui.add_space(2.0);
-                        
+
                         let clicked = render_channel_item(
                             ui,
                             name.as_str(),
@@ -290,10 +290,10 @@ pub fn render_channel_list(
                             *context_menu_visible = true;
                             *context_menu_target = Some(name.to_string());
                         }
-                        
+
                         ui.add_space(2.0);
                     }
-                    
+
                     // Hint if no results after filtering
                     if !channel_filter.is_empty() && channels.is_empty() && dms.is_empty() && system.is_empty() {
                         ui.add_space(16.0);
@@ -429,7 +429,7 @@ fn render_channel_item(
         // Draw subtle shadow for depth
         let shadow_rect = badge_rect.translate(egui::vec2(0.0, 1.0));
         ui.painter().rect_filled(shadow_rect, badge_height / 2.0, Color32::from_black_alpha(20));
-        
+
         ui.painter().rect_filled(badge_rect, badge_height / 2.0, badge_color);
         ui.painter().galley(
             badge_rect.center() - galley.size() / 2.0,
@@ -517,7 +517,7 @@ fn render_user_section(
     ui.add_space(16.0);
     ui.horizontal(|ui| {
         ui.add_space(16.0);
-        
+
         // Section icon
         let icon = if title.starts_with("OPERATORS") {
             "★"
@@ -526,7 +526,7 @@ fn render_user_section(
         } else {
             "●"
         };
-        
+
         ui.label(
             egui::RichText::new(icon)
                 .size(9.0)
@@ -541,7 +541,7 @@ fn render_user_section(
         );
     });
     ui.add_space(6.0);
-    
+
     // Subtle separator
     ui.horizontal(|ui| {
         ui.add_space(16.0);
@@ -587,7 +587,7 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
         10.0,
         theme::nick_color(&user.nick),
     );
-    
+
     // Role indicator overlay on avatar
     let status_color = theme::prefix_color(theme, user.prefix);
     let ring_center = egui::pos2(rect.min.x + 20.0, rect.center().y);
@@ -603,7 +603,7 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
     } else {
         theme.text_secondary
     };
-    
+
     ui.painter().text(
         egui::pos2(rect.min.x + 38.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -611,7 +611,7 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
         egui::FontId::new(13.0, egui::FontFamily::Proportional),
         nick_color,
     );
-    
+
     // Role badge (for ops/voiced)
     if let Some(prefix) = user.prefix {
         let badge_char = match prefix {
@@ -622,18 +622,18 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
             '+' => "V",
             _ => "",
         };
-        
+
         if !badge_char.is_empty() {
             let badge_font = egui::FontId::new(8.0, egui::FontFamily::Proportional);
             let galley = ui.fonts(|f| f.layout_no_wrap(badge_char.to_string(), badge_font, Color32::WHITE));
-            
+
             let badge_width = galley.size().x + 6.0;
             let badge_height = 14.0;
             let badge_rect = egui::Rect::from_min_size(
                 egui::pos2(rect.max.x - badge_width - 12.0, rect.center().y - badge_height / 2.0),
                 egui::vec2(badge_width, badge_height),
             );
-            
+
             ui.painter().rect_filled(badge_rect, 3.0, status_color);
             ui.painter().galley(
                 badge_rect.center() - galley.size() / 2.0,

@@ -49,14 +49,32 @@ pub struct ChannelBuffer {
     pub messages: Vec<RenderedMessage>,
     /// Users in this buffer with prefix/mode character (if any)
     pub users: Vec<UserInfo>,
+    /// Topic of the channel
     pub topic: String,
+    /// Number of unread messages
     pub unread_count: usize,
+    /// Whether there is a highlight/mention in unread messages
     pub has_highlight: bool,
+    /// Channel modes (e.g., "mtn" for +m+t+n)
+    pub channel_modes: String,
+    /// Whether notifications are muted for this channel
+    pub notifications_muted: bool,
+    /// List of pinned message IDs (indices in messages vec)
+    pub pinned_messages: Vec<usize>,
 }
 
 impl ChannelBuffer {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            messages: Vec::new(),
+            users: Vec::new(),
+            topic: String::new(),
+            unread_count: 0,
+            has_highlight: false,
+            channel_modes: String::new(),
+            notifications_muted: false,
+            pinned_messages: Vec::new(),
+        }
     }
 
     pub fn add_message(&mut self, msg: RenderedMessage, is_active: bool, is_highlight: bool) {

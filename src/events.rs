@@ -285,6 +285,54 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             None
         }
 
+        GuiEvent::ChannelMode {
+            channel,
+            modes,
+            set_by,
+        } => {
+            // Check if this is the active buffer before mutable borrow
+            let is_active = state.active_buffer == channel;
+
+            let buffer = state.ensure_buffer(&channel);
+
+            // Update channel_modes string
+            // Parse modes: +m-t means add m, remove t
+            let mut adding = true;
+            for ch in modes.chars() {
+                match ch {
+                    '+' => adding = true,
+                    '-' => adding = false,
+                    mode => {
+                        if adding {
+                            if !buffer.channel_modes.contains(mode) {
+                                buffer.channel_modes.push(mode);
+                            }
+                        } else {
+                            buffer.channel_modes = buffer
+                                .channel_modes
+                                .replace(mode, "");
+                        }
+                    }
+                }
+            }
+            // Keep modes sorted for consistent display
+            let mut chars: Vec<char> = buffer.channel_modes.chars().collect();
+            chars.sort();
+            buffer.channel_modes = chars.into_iter().collect();
+
+            // Log to buffer
+            let ts = Local::now().format("%H:%M:%S").to_string();
+            let mode_msg = RenderedMessage::new(
+                ts,
+                "*".into(),
+                format!("{} set mode {}", set_by, modes),
+            )
+            .with_type(MessageType::Normal); // Using Normal as Mode type doesn't exist yet
+            buffer.add_message(mode_msg, is_active, false);
+
+            None
+        }
+
         // Channel list events are handled in app.rs before calling this function
         GuiEvent::ChannelListItem { .. } | GuiEvent::ChannelListEnd => {
             // No-op: filtered by app.rs process_events

@@ -89,6 +89,12 @@ pub enum GuiEvent {
         prefix: Option<char>,
         added: bool,
     },
+    /// Channel mode changed (e.g., +m, -t)
+    ChannelMode {
+        channel: String,
+        modes: String,
+        set_by: String,
+    },
     /// Raw server message for the system log
     RawMessage(String),
     /// MOTD line

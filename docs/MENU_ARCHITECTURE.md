@@ -1,7 +1,7 @@
 # Menu Bar & Keyboard Shortcuts Architecture
 
-**Date:** November 30, 2025  
-**Status:** Phase 2 Complete  
+**Date:** November 30, 2025
+**Status:** Phase 2 Complete
 **Related:** MODERN_UI_DESIGN_PLAN.md, AUDIT_AND_FORWARD_PATH.md
 
 ---
@@ -40,7 +40,7 @@ pub enum MenuAction {
 // Menu rendering returns Option<MenuAction>
 pub fn render_menu_bar(...) -> Option<MenuAction> {
     let mut menu_action: Option<MenuAction> = None;
-    
+
     egui::menu::bar(ui, |ui| {
         ui.menu_button("File", |ui| {
             if ui.button("Network Manager...").clicked() {
@@ -49,7 +49,7 @@ pub fn render_menu_bar(...) -> Option<MenuAction> {
             }
         });
     });
-    
+
     menu_action
 }
 ```
@@ -173,7 +173,7 @@ use crate::ui::shortcuts::ShortcutRegistry;
 ```rust
 pub struct SlircApp {
     // ... existing fields
-    
+
     // Keyboard shortcuts registry
     pub shortcuts: ShortcutRegistry,
     pub show_shortcuts_help: bool,
@@ -186,7 +186,7 @@ pub struct SlircApp {
 impl SlircApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // ... existing initialization
-        
+
         Self {
             // ... other fields
             shortcuts: ShortcutRegistry::new(),
@@ -202,7 +202,7 @@ impl SlircApp {
 impl eframe::App for SlircApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // ... existing update logic
-        
+
         ctx.input(|i| {
             // Ctrl+/ or F1: Toggle shortcuts help overlay
             if (i.modifiers.ctrl && i.key_pressed(egui::Key::Slash))
@@ -210,18 +210,18 @@ impl eframe::App for SlircApp {
             {
                 self.show_shortcuts_help = !self.show_shortcuts_help;
             }
-            
+
             // Ctrl+M: Minimize window
             if i.modifiers.ctrl && i.key_pressed(egui::Key::M) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
-            
+
             // Ctrl+Shift+F: Toggle fullscreen
             if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::F) {
                 let current = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!current));
             }
-            
+
             // Ctrl+B: Toggle channel list
             if i.modifiers.ctrl && i.key_pressed(egui::Key::B) {
                 self.show_channel_list = !self.show_channel_list;
@@ -310,7 +310,7 @@ impl ShortcutRegistry {
     pub fn new() -> Self {
         let shortcuts = vec![
             // ... existing shortcuts
-            
+
             // Add your new shortcut
             Shortcut {
                 category: ShortcutCategory::File,
@@ -319,7 +319,7 @@ impl ShortcutRegistry {
                 action_id: "file.connect",
             },
         ];
-        
+
         Self { shortcuts }
     }
 }
@@ -332,7 +332,7 @@ Edit `src/app.rs` in the `update()` method:
 ```rust
 ctx.input(|i| {
     // ... existing handlers
-    
+
     // Ctrl+N: New connection dialog
     if i.modifiers.ctrl && i.key_pressed(egui::Key::N) {
         self.dialogs.open_network_manager(self.state.networks.clone());
@@ -453,7 +453,7 @@ if i.modifiers.ctrl && i.key_pressed(egui::Key::R) {
 ```rust
 ui.menu_button("Server", |ui| {
     // ... other items
-    
+
     ui.horizontal(|ui| {
         if ui.add_enabled(!is_connected, egui::Button::new("Reconnect")).clicked() {
             action_tx.send(BackendAction::Connect {

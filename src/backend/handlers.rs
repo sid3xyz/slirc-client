@@ -188,8 +188,11 @@ pub fn route_message(
             None
         }
 
-        // Channel mode changes (e.g. +o/-o): update UI user prefixes
+        // Channel mode changes (e.g. +o/-o): update UI user prefixes and channel modes
         Command::ChannelMODE(channel, modes) => {
+            let set_by = msg.source_nickname().unwrap_or("server").to_string();
+            let mut channel_mode_changes = String::new();
+
             for m in modes {
                 match m {
                     Mode::Plus(ChannelMode::Oper, Some(nick)) => {
@@ -272,13 +275,58 @@ pub fn route_message(
                             added: false,
                         });
                     }
+                    // Channel-level modes (no nick arg) - track for topic bar
+                    Mode::Plus(mode, None) => {
+                        if let Some(c) = channel_mode_char(mode) {
+                            channel_mode_changes.push('+');
+                            channel_mode_changes.push(c);
+                        }
+                    }
+                    Mode::Minus(mode, None) => {
+                        if let Some(c) = channel_mode_char(mode) {
+                            channel_mode_changes.push('-');
+                            channel_mode_changes.push(c);
+                        }
+                    }
                     _ => {}
                 }
             }
+
+            // Emit channel mode event if any channel-level modes changed
+            if !channel_mode_changes.is_empty() {
+                let _ = event_tx.send(GuiEvent::ChannelMode {
+                    channel: channel.clone(),
+                    modes: channel_mode_changes,
+                    set_by,
+                });
+            }
+
             None
         }
 
         // For other messages, no specific handling needed
+        _ => None,
+    }
+}
+
+/// Convert a ChannelMode to its single-character representation for display
+fn channel_mode_char(mode: &ChannelMode) -> Option<char> {
+    match mode {
+        ChannelMode::Moderated => Some('m'),
+        ChannelMode::ProtectedTopic => Some('t'),
+        ChannelMode::NoExternalMessages => Some('n'),
+        ChannelMode::Secret => Some('s'),
+        ChannelMode::InviteOnly => Some('i'),
+        ChannelMode::RegisteredOnly => Some('r'),
+        ChannelMode::Key => Some('k'),
+        ChannelMode::Limit => Some('l'),
+        // User prefix modes and list modes are handled separately
+        ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop
+        | ChannelMode::Admin | ChannelMode::Founder | ChannelMode::Ban
+        | ChannelMode::Exception | ChannelMode::InviteException | ChannelMode::Quiet => None,
+        // Unknown modes - try to emit them anyway if they have a char
+        ChannelMode::Unknown(c) => Some(*c),
+        // Catch-all for any new modes added to the non-exhaustive enum
         _ => None,
     }
 }

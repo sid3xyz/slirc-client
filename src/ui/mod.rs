@@ -18,6 +18,7 @@ pub mod quick_switcher;
 pub mod shortcuts;
 pub mod theme;
 pub mod toolbar;
+pub mod topic_bar;
 
 // Re-export commonly used items
 pub use panels::sort_users;
