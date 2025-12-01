@@ -12,4 +12,4 @@ mod main_loop;
 pub use main_loop::run_backend;
 
 #[cfg(test)]
-pub use main_loop::create_tls_connector;
+pub use connection::create_tls_connector;

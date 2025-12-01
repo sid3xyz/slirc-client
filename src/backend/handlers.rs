@@ -32,12 +32,12 @@ pub fn route_message(
         Command::Response(code, args) if code.code() == 5 => {
             // Parse ISUPPORT tokens using slirc-proto
             let params: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            let isupport = slirc_proto::Isupport::parse_params(&params);
+            let isupport = slirc_proto::Isupport::from_response_args(&params);
 
             // Extract useful info and send to UI
             let _ = event_tx.send(GuiEvent::ServerInfo {
-                network: isupport.network().map(|s| s.to_string()),
-                casemapping: isupport.casemapping().map(|s| s.to_string()),
+                network: isupport.as_ref().and_then(|i| i.network()).map(|s| s.to_string()),
+                casemapping: isupport.as_ref().and_then(|i| i.casemapping()).map(|s| s.to_string()),
             });
             None
         }
