@@ -17,7 +17,7 @@ use crate::protocol::{BackendAction, GuiEvent};
 
         // Send disconnect to allow thread to exit cleanly
         let _ = action_tx.send(BackendAction::Disconnect);
-        
+
         // Thread should not panic
         std::thread::sleep(Duration::from_millis(100));
         drop(action_tx);
@@ -237,7 +237,7 @@ use crate::protocol::{BackendAction, GuiEvent};
     #[test]
     fn test_command_parsing() {
         use crate::commands;
-        
+
         use crossbeam_channel::unbounded;
         use std::collections::HashMap;
 

@@ -76,7 +76,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
     rt.block_on(async move {
         let mut transport: Option<Transport> = None;
         let mut current_nick = String::new();
-        
+
         // Connection state for auto-reconnect
         let mut last_connection_params: Option<(String, u16, String, String, String, bool, bool)> = None;
 
@@ -100,7 +100,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                         sasl_password,
                     } => {
                         current_nick = nickname.clone();
-                        
+
                         // Save connection parameters for potential reconnect
                         last_connection_params = Some((
                             server.clone(),
@@ -136,7 +136,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 let _ = event_tx.send(GuiEvent::RawMessage(
                                     "Starting CAP negotiation...".to_string()
                                 ));
-                                
+
                                 // Send CAP LS 302 (version 302 for modern features)
                                 let cap_ls = Message::from(Command::CAP(
                                     None,
@@ -151,7 +151,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                     )));
                                     continue;
                                 }
-                                
+
                                 reg_state = RegistrationState::CapLsSent;
                                 transport = Some(transport_inst);
                             }
@@ -348,7 +348,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                         } else {
                                             star_or_caps.as_deref().unwrap_or("")
                                         };
-                                        
+
                                         // Parse each capability (may include values like sasl=PLAIN,EXTERNAL)
                                         for cap in caps_str.split_whitespace() {
                                             let (cap_name, cap_value) = if let Some(eq_pos) = cap.find('=') {
@@ -356,9 +356,9 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                             } else {
                                                 (cap, None)
                                             };
-                                            
+
                                             server_caps.available.insert(cap_name.to_string());
-                                            
+
                                             // Parse SASL mechanisms if present
                                             if cap_name == "sasl" {
                                                 if let Some(mechs) = cap_value {
@@ -372,18 +372,18 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                                 }
                                             }
                                         }
-                                        
+
                                         server_caps.cap_ls_more = is_multiline;
-                                        
+
                                         // If not multiline (final CAP LS), proceed with CAP REQ
                                         if !is_multiline && reg_state == RegistrationState::CapLsSent {
                                             let _ = event_tx.send(GuiEvent::RawMessage(format!(
                                                 "Server capabilities: {:?}", server_caps.available
                                             )));
-                                            
+
                                             // Build list of capabilities to request
                                             let mut requested = Vec::new();
-                                            
+
                                             // Always request useful caps if available
                                             let desired_caps = ["multi-prefix", "server-time", "account-notify", "away-notify"];
                                             for cap in &desired_caps {
@@ -391,24 +391,24 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                                     requested.push(*cap);
                                                 }
                                             }
-                                            
+
                                             // Request SASL only if we have a password
                                             let want_sasl = pending_reg.as_ref()
                                                 .and_then(|p| p.sasl_password.as_ref())
                                                 .is_some()
                                                 && server_caps.available.contains("sasl");
-                                            
+
                                             if want_sasl {
                                                 requested.push("sasl");
                                             }
-                                            
+
                                             if requested.is_empty() {
                                                 // No caps to request, end negotiation
                                                 let cap_end = Message::from(Command::CAP(
                                                     None, CapSubCommand::END, None, None
                                                 ));
                                                 let _ = t.write_message(&cap_end).await;
-                                                
+
                                                 // Send NICK/USER
                                                 if let Some(ref pr) = pending_reg {
                                                     let nick_msg = Message::nick(&pr.nickname);
@@ -423,7 +423,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                                 let _ = event_tx.send(GuiEvent::RawMessage(format!(
                                                     "Requesting capabilities: {}", caps_list
                                                 )));
-                                                
+
                                                 let cap_req = Message::from(Command::CAP(
                                                     None, CapSubCommand::REQ, None, Some(caps_list)
                                                 ));
@@ -432,7 +432,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                             }
                                         }
                                     }
-                                    
+
                                     CapSubCommand::ACK => {
                                         // Server acknowledged our CAP REQ
                                         let acked_caps = star_or_caps.as_deref().unwrap_or("");
@@ -445,16 +445,16 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                                 server_caps.enabled.insert(cap_name.to_string());
                                             }
                                         }
-                                        
+
                                         let _ = event_tx.send(GuiEvent::RawMessage(format!(
                                             "Capabilities enabled: {:?}", server_caps.enabled
                                         )));
-                                        
+
                                         // If SASL is enabled and we have a password, start SASL
                                         let want_sasl = pending_reg.as_ref()
                                             .and_then(|p| p.sasl_password.as_ref())
                                             .is_some();
-                                            
+
                                         if server_caps.enabled.contains("sasl") && want_sasl {
                                             // Start SASL PLAIN authentication
                                             let auth_msg = Message::from(Command::AUTHENTICATE("PLAIN".to_string()));
@@ -466,7 +466,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                                 None, CapSubCommand::END, None, None
                                             ));
                                             let _ = t.write_message(&cap_end).await;
-                                            
+
                                             if let Some(ref pr) = pending_reg {
                                                 let nick_msg = Message::nick(&pr.nickname);
                                                 let _ = t.write_message(&nick_msg).await;
@@ -476,19 +476,19 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                             reg_state = RegistrationState::Registering;
                                         }
                                     }
-                                    
+
                                     CapSubCommand::NAK => {
                                         // Server rejected some/all caps - that's okay, proceed
                                         let _ = event_tx.send(GuiEvent::RawMessage(
                                             "Some capabilities were not supported".to_string()
                                         ));
-                                        
+
                                         // End CAP and register
                                         let cap_end = Message::from(Command::CAP(
                                             None, CapSubCommand::END, None, None
                                         ));
                                         let _ = t.write_message(&cap_end).await;
-                                        
+
                                         if let Some(ref pr) = pending_reg {
                                             let nick_msg = Message::nick(&pr.nickname);
                                             let _ = t.write_message(&nick_msg).await;
@@ -497,13 +497,13 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                         }
                                         reg_state = RegistrationState::Registering;
                                     }
-                                    
+
                                     _ => {
                                         // NEW/DEL/LIST not expected during registration
                                     }
                                 }
                             }
-                            
+
                             // AUTHENTICATE challenge from server during SASL
                             Command::AUTHENTICATE(challenge) => {
                                 if reg_state == RegistrationState::SaslAuth(SaslSubState::MechanismSent)
@@ -521,7 +521,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                     }
                                 }
                             }
-                            
+
                             // SASL success (903)
                             Command::Response(code, args) if code.code() == 903 => {
                                 let msg = args.last().map(|s| s.as_str()).unwrap_or("Authenticated");
@@ -532,13 +532,13 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 let _ = event_tx.send(GuiEvent::RawMessage(format!(
                                     "SASL authentication successful: {}", msg
                                 )));
-                                
+
                                 // End CAP negotiation and register
                                 let cap_end = Message::from(Command::CAP(
                                     None, CapSubCommand::END, None, None
                                 ));
                                 let _ = t.write_message(&cap_end).await;
-                                
+
                                 if let Some(ref pr) = pending_reg {
                                     let nick_msg = Message::nick(&pr.nickname);
                                     let _ = t.write_message(&nick_msg).await;
@@ -547,7 +547,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 }
                                 reg_state = RegistrationState::Registering;
                             }
-                            
+
                             // SASL failure (904)
                             Command::Response(code, args) if code.code() == 904 => {
                                 let msg = args.last().map(|s| s.as_str()).unwrap_or("Authentication failed");
@@ -558,13 +558,13 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 let _ = event_tx.send(GuiEvent::Error(format!(
                                     "SASL authentication failed: {}", msg
                                 )));
-                                
+
                                 // End CAP negotiation and try to register anyway
                                 let cap_end = Message::from(Command::CAP(
                                     None, CapSubCommand::END, None, None
                                 ));
                                 let _ = t.write_message(&cap_end).await;
-                                
+
                                 if let Some(ref pr) = pending_reg {
                                     let nick_msg = Message::nick(&pr.nickname);
                                     let _ = t.write_message(&nick_msg).await;
@@ -573,7 +573,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                                 }
                                 reg_state = RegistrationState::Registering;
                             }
-                            
+
                             // RPL_LOGGEDIN (900) - Successfully authenticated account
                             Command::Response(code, args) if code.code() == 900 => {
                                 let account = args.get(2).map(|s| s.as_str()).unwrap_or("account");
@@ -603,7 +603,7 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
                         transport = None;
                         let _ = event_tx
                             .send(GuiEvent::Disconnected("Connection closed by server".into()));
-                        
+
                         // Note: Auto-reconnect would trigger here if last_connection_params.6 is true
                         // For now, just notify the user
                         if let Some(params) = &last_connection_params {

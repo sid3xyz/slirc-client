@@ -33,7 +33,7 @@ pub fn route_message(
             // Parse ISUPPORT tokens using slirc-proto
             let params: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             let isupport = slirc_proto::Isupport::parse_params(&params);
-            
+
             // Extract useful info and send to UI
             let _ = event_tx.send(GuiEvent::ServerInfo {
                 network: isupport.network().map(|s| s.to_string()),
@@ -162,7 +162,7 @@ pub fn route_message(
                 old: oldnick.clone(),
                 new: newnick.clone(),
             });
-            
+
             // Return new nick if it affects us (caller will update current_nick)
             if oldnick == current_nick {
                 Some(newnick.clone())

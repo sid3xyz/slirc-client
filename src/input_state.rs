@@ -15,31 +15,31 @@ use crate::buffer::ChannelBuffer;
 pub struct InputState {
     /// Current message being composed
     pub message_input: String,
-    
+
     /// Channel name input (for join operations)
     pub channel_input: String,
-    
+
     /// Command/message history (for up/down arrow navigation)
     pub history: Vec<String>,
-    
+
     /// Current position in history (None = not navigating)
     pub history_pos: Option<usize>,
-    
+
     /// Saved input when entering history mode
     pub history_saved_input: Option<String>,
-    
+
     /// Tab completion candidates
     pub completions: Vec<String>,
-    
+
     /// Current completion index (for cycling through completions)
     pub completion_index: Option<usize>,
-    
+
     /// Original prefix that was completed
     pub completion_prefix: Option<String>,
-    
+
     /// Whether we're completing a channel name
     pub completion_target_channel: bool,
-    
+
     /// Last input text (for detecting changes that should reset completion)
     pub last_input_text: String,
 }
@@ -49,7 +49,7 @@ impl InputState {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Collect tab completion candidates based on the given prefix.
     ///
     /// Supports:
@@ -113,7 +113,7 @@ impl InputState {
         matches.dedup();
         matches
     }
-    
+
     /// Apply a completion to the current message input.
     ///
     /// Replaces the last word with the completion and adds appropriate suffix:
@@ -136,7 +136,7 @@ impl InputState {
         self.history_pos = None;
         self.history_saved_input = None;
     }
-    
+
     /// Get the bounds of the last word in the message input.
     ///
     /// Returns (start_idx, end_idx) of the word being completed.
@@ -147,7 +147,7 @@ impl InputState {
             .map_or(0, |i| i + 1);
         (idx, self.message_input.len())
     }
-    
+
     /// Cycle through tab completion candidates.
     ///
     /// Returns true if a completion was applied, false otherwise.
@@ -176,14 +176,14 @@ impl InputState {
             }
         }
     }
-    
+
     /// Navigate up in command history.
     #[allow(dead_code)]
     pub fn history_up(&mut self) {
         if self.history.is_empty() {
             return;
         }
-        
+
         if self.history_pos.is_none() {
             // Store current text to restore if user navigates back
             self.history_saved_input = Some(self.message_input.clone());
@@ -193,14 +193,14 @@ impl InputState {
                 self.history_pos = Some(pos - 1);
             }
         }
-        
+
         if let Some(pos) = self.history_pos {
             if let Some(h) = self.history.get(pos) {
                 self.message_input = h.clone();
             }
         }
     }
-    
+
     /// Navigate down in command history.
     #[allow(dead_code)]
     pub fn history_down(&mut self) {
@@ -217,7 +217,7 @@ impl InputState {
             }
         }
     }
-    
+
     /// Reset completion state when input changes.
     #[allow(dead_code)]
     pub fn check_and_reset_completion(&mut self) {
@@ -228,7 +228,7 @@ impl InputState {
         }
         self.last_input_text = self.message_input.clone();
     }
-    
+
     /// Clear all input fields and reset state.
     #[allow(dead_code)]
     pub fn clear(&mut self) {
@@ -239,7 +239,7 @@ impl InputState {
         self.completion_index = None;
         self.completion_prefix = None;
     }
-    
+
     /// Add a message to history.
     #[allow(dead_code)]
     pub fn add_to_history(&mut self, message: String) {
@@ -250,7 +250,7 @@ impl InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_input_state_new() {
         let input = InputState::new();
@@ -258,62 +258,62 @@ mod tests {
         assert!(input.history.is_empty());
         assert!(input.history_pos.is_none());
     }
-    
+
     #[test]
     fn test_history_navigation() {
         let mut input = InputState::new();
         input.history = vec!["first".into(), "second".into(), "third".into()];
         input.message_input = "current".into();
-        
+
         // Navigate up
         input.history_up();
         assert_eq!(input.message_input, "third");
         assert_eq!(input.history_saved_input, Some("current".into()));
-        
+
         input.history_up();
         assert_eq!(input.message_input, "second");
-        
+
         input.history_up();
         assert_eq!(input.message_input, "first");
-        
+
         // Navigate down
         input.history_down();
         assert_eq!(input.message_input, "second");
-        
+
         input.history_down();
         assert_eq!(input.message_input, "third");
-        
+
         // Exit history mode
         input.history_down();
         assert_eq!(input.message_input, "current");
         assert!(input.history_pos.is_none());
     }
-    
+
     #[test]
     fn test_word_bounds() {
         let mut input = InputState::new();
         input.message_input = "hello world test".into();
-        
+
         let (start, end) = input.current_last_word_bounds();
         assert_eq!(start, 12);
         assert_eq!(end, 16);
         assert_eq!(&input.message_input[start..end], "test");
     }
-    
+
     #[test]
     fn test_apply_completion_nick() {
         let mut input = InputState::new();
         input.message_input = "tes".into();
-        
+
         input.apply_completion("testuser", 0, 3);
         assert_eq!(input.message_input, "testuser: ");
     }
-    
+
     #[test]
     fn test_apply_completion_command() {
         let mut input = InputState::new();
         input.message_input = "/jo".into();
-        
+
         input.apply_completion("/join", 0, 3);
         assert_eq!(input.message_input, "/join ");
     }

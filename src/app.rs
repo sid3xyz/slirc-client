@@ -358,12 +358,12 @@ impl SlircApp {
 
         // Delegate to DialogManager for all dialog rendering
         let (actions, networks_to_save) = self.dialogs.render(ctx);
-        
+
         // Process actions
         for action in actions {
             self.handle_dialog_action(action);
         }
-        
+
         // Save networks if needed
         if let Some(networks) = networks_to_save {
             self.state.networks = networks;

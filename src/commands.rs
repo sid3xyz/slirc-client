@@ -25,7 +25,7 @@ pub fn handle_user_command(
     let cmdline = s[1..].trim();
     let mut parts = cmdline.split_whitespace();
     let cmd = parts.next().unwrap_or("").to_lowercase();
-    
+
     match cmd.as_str() {
         "join" | "j" => {
             if let Some(chan) = parts.next() {
@@ -34,13 +34,13 @@ pub fn handle_user_command(
                 } else {
                     format!("#{}", chan)
                 };
-                
+
                 // Validate channel name
                 if let Err(e) = validation::validate_channel_name(&channel) {
                     system_log.push(format!("Invalid channel name: {}", e));
                     return true;
                 }
-                
+
                 let _ = action_tx.send(BackendAction::Join(channel));
             } else {
                 system_log.push("Usage: /join <channel>".into());

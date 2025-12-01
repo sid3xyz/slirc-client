@@ -75,7 +75,7 @@ impl ConnectionConfig {
 /// Load a NickServ password from the system keyring (for future NickServ support).
 pub fn load_nickserv_password(network_name: &str) -> Option<String> {
     use keyring::Entry;
-    
+
     let entry = Entry::new("slirc-client", network_name).ok()?;
     entry.get_password().ok()
 }

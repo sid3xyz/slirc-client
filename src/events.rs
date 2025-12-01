@@ -96,7 +96,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             let mention = text.contains(&state.our_nick);
             let is_own_msg = sender == state.our_nick;
             let active = state.active_buffer.clone();
-            
+
             // Create buffer first
             let buffer = state.ensure_buffer(&buffer_name);
             let is_active = active == buffer_name;
@@ -138,7 +138,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
                     message: text.clone(),
                 });
             }
-            
+
             // Unread/highlight handled by ChannelBuffer::add_message
             None
         }
