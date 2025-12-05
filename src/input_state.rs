@@ -71,9 +71,8 @@ impl InputState {
         // Command completion when prefix starts with /
         if prefix.starts_with('/') {
             let commands = vec![
-                "/join", "/j", "/part", "/p", "/msg", "/privmsg", "/me",
-                "/whois", "/w", "/topic", "/t", "/kick", "/k", "/nick",
-                "/quit", "/exit", "/help"
+                "/join", "/j", "/part", "/p", "/msg", "/privmsg", "/me", "/whois", "/w", "/topic",
+                "/t", "/kick", "/k", "/nick", "/quit", "/exit", "/help",
             ];
             for cmd in commands {
                 if cmd.starts_with(prefix) {
@@ -120,7 +119,12 @@ impl InputState {
     /// - Commands get a space
     /// - Nicks at start of line get ": "
     /// - Other completions get a space
-    pub fn apply_completion(&mut self, completion: &str, last_word_start: usize, _last_word_end: usize) {
+    pub fn apply_completion(
+        &mut self,
+        completion: &str,
+        last_word_start: usize,
+        _last_word_end: usize,
+    ) {
         let is_first_token = self.message_input[..last_word_start].trim().is_empty();
         let is_command = completion.starts_with('/');
         let suffix = if is_command {
@@ -217,8 +221,6 @@ impl InputState {
             }
         }
     }
-
-
 }
 
 #[cfg(test)]

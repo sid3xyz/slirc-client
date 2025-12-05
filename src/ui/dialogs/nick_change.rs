@@ -39,26 +39,27 @@ impl NickChangeDialog {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label("New nickname:");
-                
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.nick_input)
-                        .desired_width(200.0)
-                );
-                
+
+                let response =
+                    ui.add(egui::TextEdit::singleline(&mut self.nick_input).desired_width(200.0));
+
                 // Request focus on the input when dialog opens
                 response.request_focus();
 
                 ui.add_space(8.0);
-                
+
                 ui.horizontal(|ui| {
-                    let can_save = !self.nick_input.trim().is_empty() 
+                    let can_save = !self.nick_input.trim().is_empty()
                         && self.nick_input.trim() != self.current_nick;
-                    
-                    if ui.add_enabled(can_save, egui::Button::new("Save")).clicked() {
+
+                    if ui
+                        .add_enabled(can_save, egui::Button::new("Save"))
+                        .clicked()
+                    {
                         action = Some(DialogAction::ChangeNick(self.nick_input.trim().to_string()));
                         self.open = false;
                     }
-                    
+
                     if ui.button("Cancel").clicked() {
                         self.open = false;
                     }
@@ -66,7 +67,7 @@ impl NickChangeDialog {
 
                 // Also submit on Enter key
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    let can_save = !self.nick_input.trim().is_empty() 
+                    let can_save = !self.nick_input.trim().is_empty()
                         && self.nick_input.trim() != self.current_nick;
                     if can_save {
                         action = Some(DialogAction::ChangeNick(self.nick_input.trim().to_string()));
@@ -109,7 +110,7 @@ mod tests {
     fn test_nick_change_dialog_is_open() {
         let mut dialog = NickChangeDialog::new("testuser");
         assert!(dialog.is_open());
-        
+
         dialog.open = false;
         assert!(!dialog.is_open());
     }

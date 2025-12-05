@@ -20,7 +20,11 @@ pub fn render_messages(
     nickname: &str,
 ) {
     let dark_mode = ui.style().visuals.dark_mode;
-    let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
+    let theme = if dark_mode {
+        SlircTheme::dark()
+    } else {
+        SlircTheme::light()
+    };
 
     // Messages area with improved styling
     egui::ScrollArea::vertical()
@@ -44,11 +48,7 @@ fn render_system_log(ui: &mut egui::Ui, system_log: &[String], theme: &SlircThem
     for line in system_log {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
-            ui.label(
-                egui::RichText::new(line)
-                    .size(13.0)
-                    .color(theme.text_muted),
-            );
+            ui.label(egui::RichText::new(line).size(13.0).color(theme.text_muted));
         });
         ui.add_space(2.0);
     }
@@ -69,7 +69,11 @@ fn group_messages(messages: &[RenderedMessage]) -> Vec<MessageGroup<'_>> {
     for msg in messages {
         let is_system = matches!(
             msg.msg_type,
-            MessageType::Join | MessageType::Part | MessageType::Quit | MessageType::NickChange | MessageType::Topic
+            MessageType::Join
+                | MessageType::Part
+                | MessageType::Quit
+                | MessageType::NickChange
+                | MessageType::Topic
         );
 
         // Always start new group for system messages
@@ -91,11 +95,18 @@ fn group_messages(messages: &[RenderedMessage]) -> Vec<MessageGroup<'_>> {
             if last.is_system || last.sender != msg.sender {
                 return false;
             }
-            if !matches!(msg.msg_type, MessageType::Normal | MessageType::Action | MessageType::Notice) {
+            if !matches!(
+                msg.msg_type,
+                MessageType::Normal | MessageType::Action | MessageType::Notice
+            ) {
                 return false;
             }
             // Check time gap from last message in the group
-            let last_msg_ts = last.messages.last().map(|m| m.timestamp.as_str()).unwrap_or(last.first_timestamp);
+            let last_msg_ts = last
+                .messages
+                .last()
+                .map(|m| m.timestamp.as_str())
+                .unwrap_or(last.first_timestamp);
             timestamps_within_window(last_msg_ts, &msg.timestamp)
         });
 
@@ -137,9 +148,21 @@ fn render_grouped_messages(
 /// Render a system message (join, part, quit, etc.)
 fn render_system_message(ui: &mut egui::Ui, msg: &RenderedMessage, theme: &SlircTheme) {
     let (icon, color, text) = match &msg.msg_type {
-        MessageType::Join => ("→", theme.success, format!("{} joined the channel", msg.sender)),
-        MessageType::Part => ("←", theme.text_muted, format!("{} left the channel", msg.sender)),
-        MessageType::Quit => ("✕", theme.text_muted, format!("{} quit: {}", msg.sender, msg.text)),
+        MessageType::Join => (
+            "→",
+            theme.success,
+            format!("{} joined the channel", msg.sender),
+        ),
+        MessageType::Part => (
+            "←",
+            theme.text_muted,
+            format!("{} left the channel", msg.sender),
+        ),
+        MessageType::Quit => (
+            "✕",
+            theme.text_muted,
+            format!("{} quit: {}", msg.sender, msg.text),
+        ),
         MessageType::NickChange => ("~", theme.info, format!("{} {}", msg.sender, msg.text)),
         MessageType::Topic => ("★", theme.info, msg.text.clone()),
         _ => ("•", theme.text_muted, msg.text.clone()),
@@ -148,11 +171,7 @@ fn render_system_message(ui: &mut egui::Ui, msg: &RenderedMessage, theme: &Slirc
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.add_space(52.0); // Align with message content (avatar + margin)
-        ui.label(
-            egui::RichText::new(icon)
-                .size(12.0)
-                .color(color),
-        );
+        ui.label(egui::RichText::new(icon).size(12.0).color(color));
         ui.label(
             egui::RichText::new(&text)
                 .size(12.0)
@@ -309,10 +328,7 @@ fn render_message_content(
 
                 // Left accent strip for visual indicator
                 ui.painter().rect_filled(
-                    egui::Rect::from_min_size(
-                        rect.min,
-                        egui::vec2(3.0, 26.0),
-                    ),
+                    egui::Rect::from_min_size(rect.min, egui::vec2(3.0, 26.0)),
                     egui::CornerRadius {
                         nw: 3,
                         ne: 0,

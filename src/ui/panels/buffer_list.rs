@@ -1,9 +1,9 @@
 //! Channel/buffer list panel rendering with search, collapsible sections, and unread badges.
 
-use std::collections::HashMap;
-use eframe::egui::{self, Color32, Stroke};
 use crate::buffer::ChannelBuffer;
 use crate::ui::theme::SlircTheme;
+use eframe::egui::{self, Color32, Stroke};
+use std::collections::HashMap;
 
 /// Render the left channel list panel.
 #[allow(clippy::too_many_arguments)]
@@ -18,7 +18,11 @@ pub fn render_channel_list(
     channel_filter: &mut String,
 ) {
     let dark_mode = ctx.style().visuals.dark_mode;
-    let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
+    let theme = if dark_mode {
+        SlircTheme::dark()
+    } else {
+        SlircTheme::light()
+    };
     let sidebar_bg = theme.surface[1];
 
     egui::SidePanel::left("buffers_panel")
@@ -119,22 +123,22 @@ pub fn render_channel_list(
                         let channels_collapsed = collapsed_sections.contains("channels");
                         ui.add_space(4.0);
 
-                        let header_response = ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            let caret = if channels_collapsed { "▶" } else { "▼" };
-                            ui.label(
-                                egui::RichText::new(caret)
-                                    .size(9.0)
-                                    .color(theme.text_muted),
-                            );
-                            ui.add_space(4.0);
-                            ui.label(
-                                egui::RichText::new("CHANNELS")
-                                    .size(11.0)
-                                    .strong()
-                                    .color(theme.text_muted),
-                            );
-                        }).response;
+                        let header_response = ui
+                            .horizontal(|ui| {
+                                ui.add_space(16.0);
+                                let caret = if channels_collapsed { "▶" } else { "▼" };
+                                ui.label(
+                                    egui::RichText::new(caret).size(9.0).color(theme.text_muted),
+                                );
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new("CHANNELS")
+                                        .size(11.0)
+                                        .strong()
+                                        .color(theme.text_muted),
+                                );
+                            })
+                            .response;
 
                         if header_response.clicked() {
                             if channels_collapsed {
@@ -157,11 +161,16 @@ pub fn render_channel_list(
 
                         if !channels_collapsed {
                             for name in &channels {
-                                let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
-                                    (b.unread_count, b.has_highlight, active_buffer == name.as_str())
-                                } else {
-                                    (0, false, false)
-                                };
+                                let (unread, has_highlight, selected) =
+                                    if let Some(b) = buffers.get(name.as_str()) {
+                                        (
+                                            b.unread_count,
+                                            b.has_highlight,
+                                            active_buffer == name.as_str(),
+                                        )
+                                    } else {
+                                        (0, false, false)
+                                    };
 
                                 ui.add_space(2.0);
 
@@ -192,22 +201,22 @@ pub fn render_channel_list(
                         let dms_collapsed = collapsed_sections.contains("dms");
                         ui.add_space(12.0);
 
-                        let header_response = ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            let caret = if dms_collapsed { "▶" } else { "▼" };
-                            ui.label(
-                                egui::RichText::new(caret)
-                                    .size(9.0)
-                                    .color(theme.text_muted),
-                            );
-                            ui.add_space(4.0);
-                            ui.label(
-                                egui::RichText::new("PRIVATE MESSAGES")
-                                    .size(11.0)
-                                    .strong()
-                                    .color(theme.text_muted),
-                            );
-                        }).response;
+                        let header_response = ui
+                            .horizontal(|ui| {
+                                ui.add_space(16.0);
+                                let caret = if dms_collapsed { "▶" } else { "▼" };
+                                ui.label(
+                                    egui::RichText::new(caret).size(9.0).color(theme.text_muted),
+                                );
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new("PRIVATE MESSAGES")
+                                        .size(11.0)
+                                        .strong()
+                                        .color(theme.text_muted),
+                                );
+                            })
+                            .response;
 
                         if header_response.clicked() {
                             if dms_collapsed {
@@ -230,11 +239,16 @@ pub fn render_channel_list(
 
                         if !dms_collapsed {
                             for name in &dms {
-                                let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
-                                    (b.unread_count, b.has_highlight, active_buffer == name.as_str())
-                                } else {
-                                    (0, false, false)
-                                };
+                                let (unread, has_highlight, selected) =
+                                    if let Some(b) = buffers.get(name.as_str()) {
+                                        (
+                                            b.unread_count,
+                                            b.has_highlight,
+                                            active_buffer == name.as_str(),
+                                        )
+                                    } else {
+                                        (0, false, false)
+                                    };
 
                                 ui.add_space(2.0);
 
@@ -262,11 +276,16 @@ pub fn render_channel_list(
 
                     // System buffer (always visible, no collapse)
                     for name in &system {
-                        let (unread, has_highlight, selected) = if let Some(b) = buffers.get(name.as_str()) {
-                            (b.unread_count, b.has_highlight, active_buffer == name.as_str())
-                        } else {
-                            (0, false, false)
-                        };
+                        let (unread, has_highlight, selected) =
+                            if let Some(b) = buffers.get(name.as_str()) {
+                                (
+                                    b.unread_count,
+                                    b.has_highlight,
+                                    active_buffer == name.as_str(),
+                                )
+                            } else {
+                                (0, false, false)
+                            };
 
                         ui.add_space(2.0);
 
@@ -291,7 +310,11 @@ pub fn render_channel_list(
                     }
 
                     // Hint if no results after filtering
-                    if !channel_filter.is_empty() && channels.is_empty() && dms.is_empty() && system.is_empty() {
+                    if !channel_filter.is_empty()
+                        && channels.is_empty()
+                        && dms.is_empty()
+                        && system.is_empty()
+                    {
                         ui.add_space(16.0);
                         ui.horizontal(|ui| {
                             ui.add_space(16.0);
@@ -320,10 +343,8 @@ fn render_channel_item(
     let height = 32.0;
     let available_width = ui.available_width();
 
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(available_width, height),
-        egui::Sense::click(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(available_width, height), egui::Sense::click());
 
     let hovered = response.hovered();
 
@@ -418,15 +439,23 @@ fn render_channel_item(
         let badge_width = galley.size().x.max(16.0) + 10.0;
         let badge_height = 18.0;
         let badge_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.max.x - badge_width - 16.0, rect.center().y - badge_height / 2.0),
+            egui::pos2(
+                rect.max.x - badge_width - 16.0,
+                rect.center().y - badge_height / 2.0,
+            ),
             egui::vec2(badge_width, badge_height),
         );
 
         // Draw subtle shadow for depth
         let shadow_rect = badge_rect.translate(egui::vec2(0.0, 1.0));
-        ui.painter().rect_filled(shadow_rect, badge_height / 2.0, Color32::from_black_alpha(20));
+        ui.painter().rect_filled(
+            shadow_rect,
+            badge_height / 2.0,
+            Color32::from_black_alpha(20),
+        );
 
-        ui.painter().rect_filled(badge_rect, badge_height / 2.0, badge_color);
+        ui.painter()
+            .rect_filled(badge_rect, badge_height / 2.0, badge_color);
         ui.painter().galley(
             badge_rect.center() - galley.size() / 2.0,
             galley,

@@ -1,27 +1,26 @@
 //! Input validation for IRC protocol compliance
 
-
 /// Validates an IRC channel name according to RFC 2812
 pub fn validate_channel_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Channel name cannot be empty".to_string());
     }
-    
+
     // Channel must start with # or &
     if !name.starts_with('#') && !name.starts_with('&') {
         return Err("Channel name must start with # or &".to_string());
     }
-    
+
     // Maximum length per RFC 2812 is 50 characters
     if name.len() > 50 {
         return Err("Channel name too long (max 50 characters)".to_string());
     }
-    
+
     // Channel names cannot contain spaces, commas, or control characters
     if name.contains(|c: char| c.is_control() || c == ' ' || c == ',' || c == '\x07') {
         return Err("Channel name contains invalid characters".to_string());
     }
-    
+
     Ok(())
 }
 
@@ -31,28 +30,37 @@ pub fn validate_nickname(nick: &str) -> Result<(), String> {
     if nick.is_empty() {
         return Err("Nickname cannot be empty".to_string());
     }
-    
+
     // Maximum length per RFC 2812 is 9 characters (though many servers allow more)
     if nick.len() > 30 {
         return Err("Nickname too long (max 30 characters)".to_string());
     }
-    
+
     // First character must be a letter
-    let first_char = nick.chars().next()
+    let first_char = nick
+        .chars()
+        .next()
         .ok_or_else(|| "Nickname cannot be empty".to_string())?;
-    if !first_char.is_alphabetic() && first_char != '[' && first_char != ']' 
-        && first_char != '{' && first_char != '}' && first_char != '\\' 
-        && first_char != '|' && first_char != '_' && first_char != '^' {
+    if !first_char.is_alphabetic()
+        && first_char != '['
+        && first_char != ']'
+        && first_char != '{'
+        && first_char != '}'
+        && first_char != '\\'
+        && first_char != '|'
+        && first_char != '_'
+        && first_char != '^'
+    {
         return Err("Nickname must start with a letter or special character".to_string());
     }
-    
+
     // Rest can be alphanumeric or special characters
     for c in nick.chars() {
         if !c.is_alphanumeric() && !"-[]{}\\|_^".contains(c) {
             return Err(format!("Invalid character '{}' in nickname", c));
         }
     }
-    
+
     Ok(())
 }
 
@@ -62,9 +70,9 @@ pub fn validate_server_address(addr: &str) -> Result<(String, u16), String> {
     if addr.is_empty() {
         return Err("Server address cannot be empty".to_string());
     }
-    
+
     let parts: Vec<&str> = addr.split(':').collect();
-    
+
     match parts.as_slice() {
         [host] => {
             // No port specified, use default
@@ -77,17 +85,18 @@ pub fn validate_server_address(addr: &str) -> Result<(String, u16), String> {
             if host.is_empty() {
                 return Err("Hostname cannot be empty".to_string());
             }
-            
-            let port_num = port.parse::<u16>()
+
+            let port_num = port
+                .parse::<u16>()
                 .map_err(|_| format!("Invalid port number: {}", port))?;
-            
+
             if port_num == 0 {
                 return Err("Port number must be greater than 0".to_string());
             }
-            
+
             Ok((host.to_string(), port_num))
         }
-        _ => Err("Invalid server format. Use 'host:port' or 'host'".to_string())
+        _ => Err("Invalid server format. Use 'host:port' or 'host'".to_string()),
     }
 }
 
@@ -97,18 +106,18 @@ pub fn validate_message(msg: &str) -> Result<(), String> {
     if msg.is_empty() {
         return Err("Message cannot be empty".to_string());
     }
-    
+
     // Maximum IRC message length is 512 bytes, but we need to account for protocol overhead
     // A safe limit for the actual message content is about 400 characters
     if msg.len() > 400 {
         return Err("Message too long (max 400 characters)".to_string());
     }
-    
+
     // Messages cannot contain CR or LF
     if msg.contains('\r') || msg.contains('\n') {
         return Err("Message cannot contain newline characters".to_string());
     }
-    
+
     Ok(())
 }
 
@@ -130,7 +139,7 @@ mod tests {
         assert!(validate_channel_name("#test").is_ok());
         assert!(validate_channel_name("&local").is_ok());
         assert!(validate_channel_name("#rust-lang").is_ok());
-        
+
         assert!(validate_channel_name("").is_err());
         assert!(validate_channel_name("test").is_err()); // Missing #
         assert!(validate_channel_name("#test channel").is_err()); // Space
@@ -144,7 +153,7 @@ mod tests {
         assert!(validate_nickname("Bob123").is_ok());
         assert!(validate_nickname("user_name").is_ok());
         assert!(validate_nickname("[guest]").is_ok());
-        
+
         assert!(validate_nickname("").is_err());
         assert!(validate_nickname("123user").is_err()); // Starts with number
         assert!(validate_nickname("user name").is_err()); // Space
@@ -153,13 +162,19 @@ mod tests {
 
     #[test]
     fn test_validate_server_address() {
-        assert_eq!(validate_server_address("irc.example.com:6667").unwrap(), 
-                   ("irc.example.com".to_string(), 6667));
-        assert_eq!(validate_server_address("irc.example.com").unwrap(), 
-                   ("irc.example.com".to_string(), 6667));
-        assert_eq!(validate_server_address("192.168.1.1:6697").unwrap(), 
-                   ("192.168.1.1".to_string(), 6697));
-        
+        assert_eq!(
+            validate_server_address("irc.example.com:6667").unwrap(),
+            ("irc.example.com".to_string(), 6667)
+        );
+        assert_eq!(
+            validate_server_address("irc.example.com").unwrap(),
+            ("irc.example.com".to_string(), 6667)
+        );
+        assert_eq!(
+            validate_server_address("192.168.1.1:6697").unwrap(),
+            ("192.168.1.1".to_string(), 6697)
+        );
+
         assert!(validate_server_address("").is_err());
         assert!(validate_server_address(":6667").is_err());
         assert!(validate_server_address("host:abc").is_err());
@@ -170,7 +185,7 @@ mod tests {
     fn test_validate_message() {
         assert!(validate_message("Hello, world!").is_ok());
         assert!(validate_message("Test message with 日本語").is_ok());
-        
+
         assert!(validate_message("").is_err());
         assert!(validate_message("Line1\nLine2").is_err());
         assert!(validate_message("Line1\rLine2").is_err());

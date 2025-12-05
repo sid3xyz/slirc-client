@@ -1,9 +1,9 @@
 //! Quick switcher overlay for fast channel/DM navigation (Ctrl+K)
 //! Discord/Slack-style fuzzy search interface
 
-use eframe::egui::{self, Color32, Key};
 use crate::buffer::ChannelBuffer;
 use crate::ui::theme::SlircTheme;
+use eframe::egui::{self, Color32, Key};
 use std::collections::HashMap;
 
 /// Quick switcher state
@@ -58,18 +58,21 @@ impl QuickSwitcher {
         }
 
         // Capture Enter key to select
-        if ctx.input(|i| i.key_pressed(Key::Enter)) && !self.matches.is_empty()
-            && self.selected_index < self.matches.len() {
-                selected_buffer = Some(self.matches[self.selected_index].clone());
-                self.hide();
-                return selected_buffer;
-            }
+        if ctx.input(|i| i.key_pressed(Key::Enter))
+            && !self.matches.is_empty()
+            && self.selected_index < self.matches.len()
+        {
+            selected_buffer = Some(self.matches[self.selected_index].clone());
+            self.hide();
+            return selected_buffer;
+        }
 
         // Arrow key navigation
         if ctx.input(|i| i.key_pressed(Key::ArrowDown))
-            && self.selected_index < self.matches.len().saturating_sub(1) {
-                self.selected_index += 1;
-            }
+            && self.selected_index < self.matches.len().saturating_sub(1)
+        {
+            self.selected_index += 1;
+        }
         if ctx.input(|i| i.key_pressed(Key::ArrowUp)) {
             self.selected_index = self.selected_index.saturating_sub(1);
         }
@@ -96,20 +99,16 @@ impl QuickSwitcher {
                     ui.add_space(16.0);
                     ui.horizontal(|ui| {
                         ui.add_space(16.0);
-                        ui.label(
-                            egui::RichText::new("🔍")
-                                .size(18.0)
-                                .color(theme.text_muted),
-                        );
+                        ui.label(egui::RichText::new("🔍").size(18.0).color(theme.text_muted));
                         ui.add_space(8.0);
-                        
+
                         let search_response = ui.add(
                             egui::TextEdit::singleline(&mut self.query)
                                 .hint_text("Search channels, DMs...")
                                 .desired_width(ui.available_width() - 16.0)
                                 .font(egui::TextStyle::Heading),
                         );
-                        
+
                         // Auto-focus on first frame
                         search_response.request_focus();
                     });
@@ -135,7 +134,7 @@ impl QuickSwitcher {
                             } else {
                                 for (i, buffer_name) in self.matches.iter().enumerate() {
                                     let is_selected = i == self.selected_index;
-                                    
+
                                     let response = self.render_result_item(
                                         ui,
                                         buffer_name,
@@ -158,7 +157,7 @@ impl QuickSwitcher {
                         });
 
                     ui.add_space(8.0);
-                    
+
                     // Footer with hints
                     ui.separator();
                     ui.add_space(8.0);
@@ -201,10 +200,8 @@ impl QuickSwitcher {
         let height = 48.0;
         let available_width = ui.available_width();
 
-        let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(available_width, height),
-            egui::Sense::click(),
-        );
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(available_width, height), egui::Sense::click());
 
         // Background
         let bg_color = if is_selected {
@@ -278,11 +275,11 @@ impl QuickSwitcher {
     /// Update matches based on current query
     fn update_matches(&mut self, buffers: &HashMap<String, ChannelBuffer>) {
         let query_lower = self.query.to_lowercase();
-        
+
         // Collect all buffer names
         let mut all_buffers: Vec<String> = buffers.keys().cloned().collect();
         all_buffers.push("System".to_string());
-        
+
         // Sort and filter
         if query_lower.is_empty() {
             // No query: show all, sorted
@@ -294,24 +291,24 @@ impl QuickSwitcher {
                 .into_iter()
                 .filter(|name| name.to_lowercase().contains(&query_lower))
                 .collect();
-            
+
             // Sort by relevance: exact prefix match first, then contains
             matches.sort_by(|a, b| {
                 let a_lower = a.to_lowercase();
                 let b_lower = b.to_lowercase();
                 let a_prefix = a_lower.starts_with(&query_lower);
                 let b_prefix = b_lower.starts_with(&query_lower);
-                
+
                 match (a_prefix, b_prefix) {
                     (true, false) => std::cmp::Ordering::Less,
                     (false, true) => std::cmp::Ordering::Greater,
                     _ => a.cmp(b),
                 }
             });
-            
+
             self.matches = matches;
         }
-        
+
         // Reset selection if out of bounds
         if self.selected_index >= self.matches.len() && !self.matches.is_empty() {
             self.selected_index = 0;

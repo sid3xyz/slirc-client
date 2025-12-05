@@ -93,7 +93,11 @@ impl ClientState {
 
     /// Switch to the next buffer in order.
     pub fn next_buffer(&mut self) {
-        if let Some(current_idx) = self.buffers_order.iter().position(|b| b == &self.active_buffer) {
+        if let Some(current_idx) = self
+            .buffers_order
+            .iter()
+            .position(|b| b == &self.active_buffer)
+        {
             let next_idx = (current_idx + 1) % self.buffers_order.len();
             if let Some(next_buffer) = self.buffers_order.get(next_idx) {
                 self.active_buffer = next_buffer.clone();
@@ -107,7 +111,11 @@ impl ClientState {
 
     /// Switch to the previous buffer in order.
     pub fn prev_buffer(&mut self) {
-        if let Some(current_idx) = self.buffers_order.iter().position(|b| b == &self.active_buffer) {
+        if let Some(current_idx) = self
+            .buffers_order
+            .iter()
+            .position(|b| b == &self.active_buffer)
+        {
             let prev_idx = if current_idx == 0 {
                 self.buffers_order.len() - 1
             } else {

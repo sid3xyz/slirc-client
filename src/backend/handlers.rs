@@ -36,8 +36,14 @@ pub fn route_message(
 
             // Extract useful info and send to UI
             let _ = event_tx.send(GuiEvent::ServerInfo {
-                network: isupport.as_ref().and_then(|i| i.network()).map(|s| s.to_string()),
-                casemapping: isupport.as_ref().and_then(|i| i.casemapping()).map(|s| s.to_string()),
+                network: isupport
+                    .as_ref()
+                    .and_then(|i| i.network())
+                    .map(|s| s.to_string()),
+                casemapping: isupport
+                    .as_ref()
+                    .and_then(|i| i.casemapping())
+                    .map(|s| s.to_string()),
             });
             None
         }
@@ -321,9 +327,15 @@ fn channel_mode_char(mode: &ChannelMode) -> Option<char> {
         ChannelMode::Key => Some('k'),
         ChannelMode::Limit => Some('l'),
         // User prefix modes and list modes are handled separately
-        ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop
-        | ChannelMode::Admin | ChannelMode::Founder | ChannelMode::Ban
-        | ChannelMode::Exception | ChannelMode::InviteException | ChannelMode::Quiet => None,
+        ChannelMode::Oper
+        | ChannelMode::Voice
+        | ChannelMode::Halfop
+        | ChannelMode::Admin
+        | ChannelMode::Founder
+        | ChannelMode::Ban
+        | ChannelMode::Exception
+        | ChannelMode::InviteException
+        | ChannelMode::Quiet => None,
         // Unknown modes - try to emit them anyway if they have a char
         ChannelMode::Unknown(c) => Some(*c),
         // Catch-all for any new modes added to the non-exhaustive enum

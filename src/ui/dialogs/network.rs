@@ -3,8 +3,8 @@
 use eframe::egui;
 use std::collections::HashSet;
 
-use crate::config::Network;
 use super::DialogAction;
+use crate::config::Network;
 
 /// Form state for creating/editing a network
 #[derive(Default, Clone)]
@@ -135,7 +135,7 @@ impl NetworkManagerDialog {
 
     /// Render the network manager dialog.
     /// Returns `Some(DialogAction)` for connect/save/delete actions.
-    /// 
+    ///
     /// The second return value indicates if the dialog is still open.
     pub fn render(&mut self, ctx: &egui::Context) -> (Option<DialogAction>, bool) {
         let mut action: Option<DialogAction> = None;
@@ -156,7 +156,7 @@ impl NetworkManagerDialog {
                 let mut edit_index: Option<usize> = None;
                 let mut connect_network: Option<Network> = None;
                 let mut toggle_expanded: Option<String> = None;
-                
+
                 egui::ScrollArea::vertical()
                     .max_height(200.0)
                     .show(ui, |ui| {
@@ -164,7 +164,7 @@ impl NetworkManagerDialog {
                             let network = &self.networks[idx];
                             let network_name = network.name.clone();
                             let expanded = self.expanded.contains(&network_name);
-                            
+
                             ui.horizontal(|ui| {
                                 // Expand/collapse button
                                 if ui.small_button(if expanded { "▾" } else { "▸" }).clicked() {
@@ -178,7 +178,7 @@ impl NetworkManagerDialog {
                                     network.name.clone()
                                 };
                                 ui.label(egui::RichText::new(label).strong());
-                                
+
                                 // Server list
                                 ui.label(format!("({})", network.servers.join(", ")));
 
@@ -236,7 +236,7 @@ impl NetworkManagerDialog {
                 if !self.is_editing() {
                     ui.horizontal(|ui| {
                         ui.label("Quick add:");
-                        
+
                         if ui.small_button("Libera.Chat").clicked() {
                             self.networks.push(Network {
                                 name: "Libera.Chat".to_string(),
@@ -250,7 +250,7 @@ impl NetworkManagerDialog {
                             });
                             self.modified = true;
                         }
-                        
+
                         if ui.small_button("OFTC").clicked() {
                             self.networks.push(Network {
                                 name: "OFTC".to_string(),
@@ -264,7 +264,7 @@ impl NetworkManagerDialog {
                             });
                             self.modified = true;
                         }
-                        
+
                         if ui.small_button("EFnet").clicked() {
                             self.networks.push(Network {
                                 name: "EFnet".to_string(),
@@ -278,7 +278,7 @@ impl NetworkManagerDialog {
                             });
                             self.modified = true;
                         }
-                        
+
                         if ui.small_button("Rizon").clicked() {
                             self.networks.push(Network {
                                 name: "Rizon".to_string(),
@@ -293,7 +293,7 @@ impl NetworkManagerDialog {
                             self.modified = true;
                         }
                     });
-                    
+
                     ui.separator();
                 }
 
@@ -321,12 +321,14 @@ impl NetworkManagerDialog {
                             ui.label("Servers:");
                             ui.text_edit_singleline(&mut self.form.servers);
                             ui.end_row();
-                            
+
                             ui.label("");
                             ui.label(
-                                egui::RichText::new("(Comma-separated, e.g., irc.example.com:6697)")
-                                    .small()
-                                    .weak()
+                                egui::RichText::new(
+                                    "(Comma-separated, e.g., irc.example.com:6697)",
+                                )
+                                .small()
+                                .weak(),
                             );
                             ui.end_row();
 
@@ -337,27 +339,27 @@ impl NetworkManagerDialog {
                             ui.label("Favorite Channels:");
                             ui.text_edit_singleline(&mut self.form.favorite_channels);
                             ui.end_row();
-                            
+
                             ui.label("");
                             ui.label(
                                 egui::RichText::new("(Comma-separated, e.g., #rust, #linux)")
                                     .small()
-                                    .weak()
+                                    .weak(),
                             );
                             ui.end_row();
 
                             ui.label("NickServ Password:");
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.form.nickserv_password)
-                                    .password(true)
+                                    .password(true),
                             );
                             ui.end_row();
-                            
+
                             ui.label("");
                             ui.label(
                                 egui::RichText::new("(Optional, stored in system keyring)")
                                     .small()
-                                    .weak()
+                                    .weak(),
                             );
                             ui.end_row();
                         });
@@ -369,10 +371,13 @@ impl NetworkManagerDialog {
                     ui.separator();
                     ui.horizontal(|ui| {
                         let can_save = self.form.is_valid();
-                        
-                        if ui.add_enabled(can_save, egui::Button::new("Save")).clicked() {
+
+                        if ui
+                            .add_enabled(can_save, egui::Button::new("Save"))
+                            .clicked()
+                        {
                             let network = self.form.to_network();
-                            
+
                             if let Some(idx) = self.editing_index {
                                 // Editing existing
                                 action = Some(DialogAction::NetworkSave {
@@ -388,7 +393,7 @@ impl NetworkManagerDialog {
                                 });
                                 self.networks.push(network);
                             }
-                            
+
                             self.modified = true;
                             self.cancel_edit();
                         }
@@ -403,7 +408,7 @@ impl NetworkManagerDialog {
                 if !self.is_editing() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     should_close = true;
                 }
-                
+
                 // Process deferred actions after UI is done
                 if let Some(name) = toggle_expanded {
                     if self.expanded.contains(&name) {
@@ -412,11 +417,11 @@ impl NetworkManagerDialog {
                         self.expanded.insert(name);
                     }
                 }
-                
+
                 if let Some(idx) = edit_index {
                     self.start_edit(idx);
                 }
-                
+
                 if let Some(network) = connect_network {
                     action = Some(DialogAction::NetworkConnect(network));
                 }
@@ -443,7 +448,10 @@ mod tests {
     fn test_network_form_from_network() {
         let network = Network {
             name: "TestNet".to_string(),
-            servers: vec!["irc.test.com:6667".to_string(), "irc2.test.com:6697".to_string()],
+            servers: vec![
+                "irc.test.com:6667".to_string(),
+                "irc2.test.com:6697".to_string(),
+            ],
             nick: "testuser".to_string(),
             auto_connect: true,
             favorite_channels: vec!["#test".to_string(), "#rust".to_string()],
@@ -451,9 +459,9 @@ mod tests {
             use_tls: true,
             auto_reconnect: true,
         };
-        
+
         let form = NetworkForm::from_network(&network);
-        
+
         assert_eq!(form.name, "TestNet");
         assert_eq!(form.servers, "irc.test.com:6667, irc2.test.com:6697");
         assert_eq!(form.nick, "testuser");
@@ -474,11 +482,14 @@ mod tests {
             nickserv_password: String::new(),
             use_tls: false,
         };
-        
+
         let network = form.to_network();
-        
+
         assert_eq!(network.name, "NewNet");
-        assert_eq!(network.servers, vec!["irc.new.com:6667", "irc2.new.com:6697"]);
+        assert_eq!(
+            network.servers,
+            vec!["irc.new.com:6667", "irc2.new.com:6697"]
+        );
         assert_eq!(network.nick, "newuser");
         assert!(!network.auto_connect);
         assert_eq!(network.favorite_channels, vec!["#new", "#test"]);
@@ -490,34 +501,32 @@ mod tests {
     fn test_network_form_is_valid() {
         let mut form = NetworkForm::default();
         assert!(!form.is_valid());
-        
+
         form.name = "Test".to_string();
         assert!(!form.is_valid());
-        
+
         form.servers = "irc.test.com:6667".to_string();
         assert!(!form.is_valid());
-        
+
         form.nick = "testuser".to_string();
         assert!(form.is_valid());
     }
 
     #[test]
     fn test_network_manager_creation() {
-        let networks = vec![
-            Network {
-                name: "Net1".to_string(),
-                servers: vec!["irc.net1.com:6667".to_string()],
-                nick: "user1".to_string(),
-                auto_connect: false,
-                favorite_channels: vec![],
-                nickserv_password: None,
-                use_tls: false,
-                auto_reconnect: true,
-            },
-        ];
-        
+        let networks = vec![Network {
+            name: "Net1".to_string(),
+            servers: vec!["irc.net1.com:6667".to_string()],
+            nick: "user1".to_string(),
+            auto_connect: false,
+            favorite_channels: vec![],
+            nickserv_password: None,
+            use_tls: false,
+            auto_reconnect: true,
+        }];
+
         let dialog = NetworkManagerDialog::new(networks.clone());
-        
+
         assert_eq!(dialog.networks.len(), 1);
         assert_eq!(dialog.networks[0].name, "Net1");
         assert!(!dialog.was_modified());
@@ -525,22 +534,20 @@ mod tests {
 
     #[test]
     fn test_network_manager_get_networks() {
-        let networks = vec![
-            Network {
-                name: "Net1".to_string(),
-                servers: vec!["irc.net1.com:6667".to_string()],
-                nick: "user1".to_string(),
-                auto_connect: false,
-                favorite_channels: vec![],
-                nickserv_password: None,
-                use_tls: false,
-                auto_reconnect: true,
-            },
-        ];
-        
+        let networks = vec![Network {
+            name: "Net1".to_string(),
+            servers: vec!["irc.net1.com:6667".to_string()],
+            nick: "user1".to_string(),
+            auto_connect: false,
+            favorite_channels: vec![],
+            nickserv_password: None,
+            use_tls: false,
+            auto_reconnect: true,
+        }];
+
         let dialog = NetworkManagerDialog::new(networks);
         let result = dialog.get_networks();
-        
+
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "Net1");
     }

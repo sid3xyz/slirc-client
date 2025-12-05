@@ -5,16 +5,16 @@
 //! - Backend thread: runs a Tokio runtime for async network I/O
 //! - Communication via crossbeam channels (lock-free, sync-safe)
 
+use eframe::egui;
 use slirc_client::app::SlircApp;
 use slirc_client::fonts;
 use slirc_client::ui;
-use eframe::egui;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 720.0])  // Modern default size
-            .with_min_inner_size([800.0, 600.0]),  // Minimum for 2.5-column layout
+            .with_inner_size([1280.0, 720.0]) // Modern default size
+            .with_min_inner_size([800.0, 600.0]), // Minimum for 2.5-column layout
         ..Default::default()
     };
 
@@ -34,4 +34,3 @@ fn main() -> eframe::Result<()> {
         }),
     )
 }
-

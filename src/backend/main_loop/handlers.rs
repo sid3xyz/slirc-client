@@ -1,11 +1,11 @@
 //! Event handlers for backend actions and server messages.
 
-use crossbeam_channel::Sender;
-use slirc_proto::{CapSubCommand, Command, Message, Transport};
-use slirc_proto::sasl::{encode_plain, SaslMechanism};
-use crate::protocol::{BackendAction, GuiEvent};
-use super::state::{RegistrationState, SaslSubState, ServerCaps, PendingRegistration};
 use super::connection;
+use super::state::{PendingRegistration, RegistrationState, SaslSubState, ServerCaps};
+use crate::protocol::{BackendAction, GuiEvent};
+use crossbeam_channel::Sender;
+use slirc_proto::sasl::{encode_plain, SaslMechanism};
+use slirc_proto::{CapSubCommand, Command, Message, Transport};
 
 /// Handle a backend action from the GUI
 #[allow(clippy::too_many_arguments)]
@@ -57,14 +57,15 @@ pub async fn handle_backend_action(
             let addr = format!("{}:{}", server, port);
             let protocol = if use_tls { "TLS" } else { "TCP" };
             let _ = event_tx.send(GuiEvent::RawMessage(format!(
-                "Connecting to {} via {}...", addr, protocol
+                "Connecting to {} via {}...",
+                addr, protocol
             )));
 
             match connection::establish_connection(&server, port, use_tls).await {
                 Ok(mut transport_inst) => {
                     // Start IRCv3 CAP negotiation
                     let _ = event_tx.send(GuiEvent::RawMessage(
-                        "Starting CAP negotiation...".to_string()
+                        "Starting CAP negotiation...".to_string(),
                     ));
 
                     // Send CAP LS 302 (version 302 for modern features)
@@ -75,10 +76,8 @@ pub async fn handle_backend_action(
                         None,
                     ));
                     if let Err(e) = transport_inst.write_message(&cap_ls).await {
-                        let _ = event_tx.send(GuiEvent::Error(format!(
-                            "Failed to send CAP LS: {}",
-                            e
-                        )));
+                        let _ =
+                            event_tx.send(GuiEvent::Error(format!("Failed to send CAP LS: {}", e)));
                         return;
                     }
 
@@ -105,8 +104,7 @@ pub async fn handle_backend_action(
             if let Some(ref mut t) = transport {
                 let join_msg = Message::join(&channel);
                 if let Err(e) = t.write_message(&join_msg).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to join: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to join: {}", e)));
                 }
             }
         }
@@ -119,8 +117,7 @@ pub async fn handle_backend_action(
                     Message::part(&channel)
                 };
                 if let Err(e) = t.write_message(&part_msg).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to part: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to part: {}", e)));
                 }
             }
         }
@@ -129,8 +126,7 @@ pub async fn handle_backend_action(
             if let Some(ref mut t) = transport {
                 let nick_msg = Message::nick(&newnick);
                 if let Err(e) = t.write_message(&nick_msg).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to send NICK: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to send NICK: {}", e)));
                 } else {
                     let old_nick = current_nick.clone();
                     *current_nick = newnick.clone();
@@ -146,13 +142,10 @@ pub async fn handle_backend_action(
 
         BackendAction::Whois(target) => {
             if let Some(ref mut t) = transport {
-                let whois = Message::from(slirc_proto::command::Command::WHOIS(
-                    None,
-                    target.clone(),
-                ));
+                let whois =
+                    Message::from(slirc_proto::command::Command::WHOIS(None, target.clone()));
                 if let Err(e) = t.write_message(&whois).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to send WHOIS: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to send WHOIS: {}", e)));
                 }
             } else {
                 let _ = event_tx.send(GuiEvent::Error("Not connected".into()));
@@ -166,8 +159,7 @@ pub async fn handle_backend_action(
                     Some(topic.clone()),
                 ));
                 if let Err(e) = t.write_message(&topic_cmd).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to set topic: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to set topic: {}", e)));
                 }
             }
         }
@@ -184,8 +176,7 @@ pub async fn handle_backend_action(
                     Message::kick(&channel, &nick)
                 };
                 if let Err(e) = t.write_message(&kick_msg).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to kick: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to kick: {}", e)));
                 }
             }
         }
@@ -197,14 +188,10 @@ pub async fn handle_backend_action(
         } => {
             if let Some(ref mut t) = transport {
                 // Create a raw MODE command with args: MODE <channel> <mode> <nick>
-                if let Ok(mode_msg) =
-                    Message::new(None, "MODE", vec![&channel, &mode, &nick])
-                {
+                if let Ok(mode_msg) = Message::new(None, "MODE", vec![&channel, &mode, &nick]) {
                     if let Err(e) = t.write_message(&mode_msg).await {
-                        let _ = event_tx.send(GuiEvent::Error(format!(
-                            "Failed to set user mode: {}",
-                            e
-                        )));
+                        let _ = event_tx
+                            .send(GuiEvent::Error(format!("Failed to set user mode: {}", e)));
                     }
                 }
             }
@@ -243,8 +230,7 @@ pub async fn handle_backend_action(
             if let Some(ref mut t) = transport {
                 let privmsg = Message::privmsg(&target, &text);
                 if let Err(e) = t.write_message(&privmsg).await {
-                    let _ = event_tx
-                        .send(GuiEvent::Error(format!("Failed to send: {}", e)));
+                    let _ = event_tx.send(GuiEvent::Error(format!("Failed to send: {}", e)));
                 } else {
                     // Echo our own message to the UI
                     let _ = event_tx.send(GuiEvent::MessageReceived {
@@ -278,7 +264,17 @@ pub async fn handle_server_message(
 
         // CAP LS/ACK/NAK responses during negotiation
         Command::CAP(_, subcommand, star_or_caps, maybe_caps) => {
-            handle_cap_message(subcommand, star_or_caps, maybe_caps, transport, reg_state, server_caps, pending_reg, event_tx).await;
+            handle_cap_message(
+                subcommand,
+                star_or_caps,
+                maybe_caps,
+                transport,
+                reg_state,
+                server_caps,
+                pending_reg,
+                event_tx,
+            )
+            .await;
         }
 
         // AUTHENTICATE challenge from server during SASL
@@ -307,7 +303,8 @@ pub async fn handle_server_message(
                 message: msg.to_string(),
             });
             let _ = event_tx.send(GuiEvent::RawMessage(format!(
-                "SASL authentication successful: {}", msg
+                "SASL authentication successful: {}",
+                msg
             )));
 
             // End CAP negotiation and register
@@ -316,13 +313,17 @@ pub async fn handle_server_message(
 
         // SASL failure (904)
         Command::Response(code, args) if code.code() == 904 => {
-            let msg = args.last().map(|s| s.as_str()).unwrap_or("Authentication failed");
+            let msg = args
+                .last()
+                .map(|s| s.as_str())
+                .unwrap_or("Authentication failed");
             let _ = event_tx.send(GuiEvent::SaslResult {
                 success: false,
                 message: msg.to_string(),
             });
             let _ = event_tx.send(GuiEvent::Error(format!(
-                "SASL authentication failed: {}", msg
+                "SASL authentication failed: {}",
+                msg
             )));
 
             // End CAP negotiation and try to register anyway
@@ -332,9 +333,7 @@ pub async fn handle_server_message(
         // RPL_LOGGEDIN (900) - Successfully authenticated account
         Command::Response(code, args) if code.code() == 900 => {
             let account = args.get(2).map(|s| s.as_str()).unwrap_or("account");
-            let _ = event_tx.send(GuiEvent::RawMessage(format!(
-                "Logged in as {}", account
-            )));
+            let _ = event_tx.send(GuiEvent::RawMessage(format!("Logged in as {}", account)));
         }
 
         // RPL_WELCOME (001) - Registration complete
@@ -347,7 +346,9 @@ pub async fn handle_server_message(
         // All other messages: route through handler module
         _ => {
             // Route message and potentially update current_nick
-            if let Some(new_nick) = super::super::handlers::route_message(&message, current_nick, event_tx) {
+            if let Some(new_nick) =
+                super::super::handlers::route_message(&message, current_nick, event_tx)
+            {
                 *current_nick = new_nick;
             }
         }
@@ -389,10 +390,8 @@ async fn handle_cap_message(
                 // Parse SASL mechanisms if present
                 if cap_name == "sasl" {
                     if let Some(mechs) = cap_value {
-                        server_caps.sasl_mechanisms = mechs
-                            .split(',')
-                            .map(SaslMechanism::parse)
-                            .collect();
+                        server_caps.sasl_mechanisms =
+                            mechs.split(',').map(SaslMechanism::parse).collect();
                     } else {
                         // Server supports SASL but didn't list mechanisms
                         server_caps.sasl_mechanisms = vec![SaslMechanism::Plain];
@@ -405,14 +404,20 @@ async fn handle_cap_message(
             // If not multiline (final CAP LS), proceed with CAP REQ
             if !is_multiline && *reg_state == RegistrationState::CapLsSent {
                 let _ = event_tx.send(GuiEvent::RawMessage(format!(
-                    "Server capabilities: {:?}", server_caps.available
+                    "Server capabilities: {:?}",
+                    server_caps.available
                 )));
 
                 // Build list of capabilities to request
                 let mut requested = Vec::new();
 
                 // Always request useful caps if available
-                let desired_caps = ["multi-prefix", "server-time", "account-notify", "away-notify"];
+                let desired_caps = [
+                    "multi-prefix",
+                    "server-time",
+                    "account-notify",
+                    "away-notify",
+                ];
                 for cap in &desired_caps {
                     if server_caps.available.contains(*cap) {
                         requested.push(*cap);
@@ -420,7 +425,8 @@ async fn handle_cap_message(
                 }
 
                 // Request SASL only if we have a password
-                let want_sasl = pending_reg.as_ref()
+                let want_sasl = pending_reg
+                    .as_ref()
                     .and_then(|p| p.sasl_password.as_ref())
                     .is_some()
                     && server_caps.available.contains("sasl");
@@ -436,11 +442,15 @@ async fn handle_cap_message(
                     // Send CAP REQ
                     let caps_list = requested.join(" ");
                     let _ = event_tx.send(GuiEvent::RawMessage(format!(
-                        "Requesting capabilities: {}", caps_list
+                        "Requesting capabilities: {}",
+                        caps_list
                     )));
 
                     let cap_req = Message::from(Command::CAP(
-                        None, CapSubCommand::REQ, None, Some(caps_list)
+                        None,
+                        CapSubCommand::REQ,
+                        None,
+                        Some(caps_list),
                     ));
                     let _ = transport.write_message(&cap_req).await;
                     *reg_state = RegistrationState::CapReqSent;
@@ -462,11 +472,13 @@ async fn handle_cap_message(
             }
 
             let _ = event_tx.send(GuiEvent::RawMessage(format!(
-                "Capabilities enabled: {:?}", server_caps.enabled
+                "Capabilities enabled: {:?}",
+                server_caps.enabled
             )));
 
             // If SASL is enabled and we have a password, start SASL
-            let want_sasl = pending_reg.as_ref()
+            let want_sasl = pending_reg
+                .as_ref()
                 .and_then(|p| p.sasl_password.as_ref())
                 .is_some();
 
@@ -484,7 +496,7 @@ async fn handle_cap_message(
         CapSubCommand::NAK => {
             // Server rejected some/all caps - that's okay, proceed
             let _ = event_tx.send(GuiEvent::RawMessage(
-                "Some capabilities were not supported".to_string()
+                "Some capabilities were not supported".to_string(),
             ));
 
             // End CAP and register
@@ -503,9 +515,7 @@ async fn end_cap_and_register(
     pending_reg: &Option<PendingRegistration>,
     reg_state: &mut RegistrationState,
 ) {
-    let cap_end = Message::from(Command::CAP(
-        None, CapSubCommand::END, None, None
-    ));
+    let cap_end = Message::from(Command::CAP(None, CapSubCommand::END, None, None));
     let _ = transport.write_message(&cap_end).await;
 
     if let Some(ref pr) = pending_reg {

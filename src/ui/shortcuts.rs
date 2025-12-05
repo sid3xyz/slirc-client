@@ -307,7 +307,10 @@ mod tests {
         assert!(!file_shortcuts.is_empty(), "Should have File shortcuts");
 
         let nav_shortcuts = registry.by_category(ShortcutCategory::Navigation);
-        assert!(!nav_shortcuts.is_empty(), "Should have Navigation shortcuts");
+        assert!(
+            !nav_shortcuts.is_empty(),
+            "Should have Navigation shortcuts"
+        );
     }
 
     #[test]

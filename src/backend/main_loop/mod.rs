@@ -4,14 +4,14 @@ pub mod connection;
 pub mod handlers;
 pub mod state;
 
-pub use state::{RegistrationState, ServerCaps, PendingRegistration};
+pub use state::{PendingRegistration, RegistrationState, ServerCaps};
 
+use crate::protocol::{BackendAction, GuiEvent};
 use crossbeam_channel::{Receiver, Sender};
 use slirc_proto::Transport;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::time::timeout;
-use crate::protocol::{BackendAction, GuiEvent};
 
 /// Run the backend event loop on a tokio runtime
 pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent>) {
@@ -19,7 +19,10 @@ pub fn run_backend(action_rx: Receiver<BackendAction>, event_tx: Sender<GuiEvent
     let rt = match Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
-            let _ = event_tx.send(GuiEvent::Error(format!("Failed to create Tokio runtime: {}", e)));
+            let _ = event_tx.send(GuiEvent::Error(format!(
+                "Failed to create Tokio runtime: {}",
+                e
+            )));
             return;
         }
     };

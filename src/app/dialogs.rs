@@ -36,7 +36,9 @@ impl SlircApp {
                 let _ = self.action_tx.send(BackendAction::Nick(new_nick));
             }
             DialogAction::SetTopic { channel, topic } => {
-                let _ = self.action_tx.send(BackendAction::SetTopic { channel, topic });
+                let _ = self
+                    .action_tx
+                    .send(BackendAction::SetTopic { channel, topic });
             }
             DialogAction::JoinChannel(channel) => {
                 let _ = self.action_tx.send(BackendAction::Join(channel));
@@ -45,10 +47,7 @@ impl SlircApp {
                 if let Some(server_addr) = network.servers.first() {
                     let parts: Vec<&str> = server_addr.split(':').collect();
                     let server = parts[0].to_string();
-                    let port: u16 = parts
-                        .get(1)
-                        .and_then(|p| p.parse().ok())
-                        .unwrap_or(6667);
+                    let port: u16 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(6667);
 
                     // Set state fields for event processing
                     self.state.server_name = server_addr.clone();
@@ -71,7 +70,10 @@ impl SlircApp {
                     }
                 }
             }
-            DialogAction::NetworkSave { index: _, network: _ } => {
+            DialogAction::NetworkSave {
+                index: _,
+                network: _,
+            } => {
                 // Network already saved in dialog, just need to persist
                 // This is handled when dialog closes
             }

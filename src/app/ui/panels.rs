@@ -31,7 +31,8 @@ impl SlircApp {
                 ) {
                     match menu_action {
                         ui::menu::MenuAction::NetworkManager => {
-                            self.dialogs.open_network_manager(self.state.networks.clone());
+                            self.dialogs
+                                .open_network_manager(self.state.networks.clone());
                         }
                         ui::menu::MenuAction::Help => {
                             self.show_shortcuts_help = true;
@@ -55,10 +56,7 @@ impl SlircApp {
                 egui::Frame::new()
                     .fill(toolbar_bg)
                     .inner_margin(egui::Margin::symmetric(12, 8))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        theme.border_medium,
-                    )),
+                    .stroke(egui::Stroke::new(1.0, theme.border_medium)),
             )
             .show(ctx, |ui| {
                 if let Some(toolbar_action) = ui::toolbar::render_toolbar(
@@ -88,11 +86,7 @@ impl SlircApp {
         let theme = self.get_theme();
         let chat_bg = theme.surface[0]; // Base surface for messages
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(chat_bg)
-                    .inner_margin(0.0),
-            )
+            .frame(egui::Frame::new().fill(chat_bg).inner_margin(0.0))
             .show(ctx, |ui| {
                 // Use state.our_nick if connected, otherwise fall back to UI input
                 let current_nick = if self.state.our_nick.is_empty() {

@@ -32,13 +32,13 @@ impl SlircTheme {
         Self {
             name: "Dark".to_string(),
             surface: [
-                Color32::from_rgb(10, 10, 15),    // surface_0: App background
-                Color32::from_rgb(19, 19, 26),    // surface_1: Sidebar background
-                Color32::from_rgb(28, 28, 38),    // surface_2: Message background
-                Color32::from_rgb(37, 37, 50),    // surface_3: Hover state
-                Color32::from_rgb(46, 46, 62),    // surface_4: Active selection
-                Color32::from_rgb(56, 56, 74),    // surface_5: Elevated panels
-                Color32::from_rgb(66, 66, 86),    // surface_6: Modals/dialogs
+                Color32::from_rgb(10, 10, 15), // surface_0: App background
+                Color32::from_rgb(19, 19, 26), // surface_1: Sidebar background
+                Color32::from_rgb(28, 28, 38), // surface_2: Message background
+                Color32::from_rgb(37, 37, 50), // surface_3: Hover state
+                Color32::from_rgb(46, 46, 62), // surface_4: Active selection
+                Color32::from_rgb(56, 56, 74), // surface_5: Elevated panels
+                Color32::from_rgb(66, 66, 86), // surface_6: Modals/dialogs
             ],
             accent: Color32::from_rgb(88, 101, 242),
             accent_hover: Color32::from_rgb(71, 82, 196),
@@ -134,9 +134,9 @@ pub fn prefix_rank(prefix: Option<char>) -> u8 {
 /// Color for user prefix/status indicator
 pub fn prefix_color(theme: &SlircTheme, prefix: Option<char>) -> Color32 {
     match prefix {
-        Some('@') | Some('~') | Some('&') => theme.success,  // Green for ops
-        Some('+') | Some('%') => theme.warning,               // Orange for voice
-        _ => theme.text_muted,                                // Gray for regular
+        Some('@') | Some('~') | Some('&') => theme.success, // Green for ops
+        Some('+') | Some('%') => theme.warning,             // Orange for voice
+        _ => theme.text_muted,                              // Gray for regular
     }
 }
 
@@ -161,7 +161,10 @@ pub const MIRC_COLORS: [Color32; 16] = [
 ];
 
 pub fn mirc_color(code: u8) -> Color32 {
-    MIRC_COLORS.get(code as usize).copied().unwrap_or(Color32::WHITE)
+    MIRC_COLORS
+        .get(code as usize)
+        .copied()
+        .unwrap_or(Color32::WHITE)
 }
 
 #[cfg(test)]

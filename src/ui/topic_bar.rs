@@ -125,15 +125,13 @@ pub fn render_topic_bar(
 
                 let topic_response = ui.add_sized(
                     egui::vec2(available_width, 20.0),
-                    egui::Label::new(
-                        egui::RichText::new(topic_display)
-                            .size(14.0)
-                            .color(if topic.is_empty() {
-                                theme.text_muted
-                            } else {
-                                theme.text_secondary
-                            }),
-                    )
+                    egui::Label::new(egui::RichText::new(topic_display).size(14.0).color(
+                        if topic.is_empty() {
+                            theme.text_muted
+                        } else {
+                            theme.text_secondary
+                        },
+                    ))
                     .truncate()
                     .sense(egui::Sense::click()),
                 );
@@ -162,9 +160,7 @@ pub fn render_topic_bar(
                     // Search icon
                     let search_response = ui.add(
                         egui::Label::new(
-                            egui::RichText::new("🔍")
-                                .size(16.0)
-                                .color(theme.text_muted),
+                            egui::RichText::new("🔍").size(16.0).color(theme.text_muted),
                         )
                         .sense(egui::Sense::click()),
                     );
@@ -208,8 +204,12 @@ pub fn render_topic_bar(
                     };
 
                     let notif_response = ui.add(
-                        egui::Label::new(egui::RichText::new(notif_icon).size(16.0).color(notif_color))
-                            .sense(egui::Sense::click()),
+                        egui::Label::new(
+                            egui::RichText::new(notif_icon)
+                                .size(16.0)
+                                .color(notif_color),
+                        )
+                        .sense(egui::Sense::click()),
                     );
                     if notif_response.clicked() {
                         action = Some(TopicBarAction::ToggleMute);
@@ -220,7 +220,10 @@ pub fn render_topic_bar(
                         } else {
                             "muted"
                         };
-                        notif_response.on_hover_text(format!("Notifications are {} (click to toggle)", status));
+                        notif_response.on_hover_text(format!(
+                            "Notifications are {} (click to toggle)",
+                            status
+                        ));
                     }
                 });
             });

@@ -27,7 +27,7 @@ impl TopicEditorDialog {
     /// Render the topic editor dialog.
     /// Returns `Some(DialogAction::SetTopic)` if the user saved a new topic.
     /// Returns `None` if still editing or cancelled.
-    /// 
+    ///
     /// The second return value indicates if the dialog is still open.
     pub fn render(&mut self, ctx: &egui::Context) -> (Option<DialogAction>, bool) {
         let mut action: Option<DialogAction> = None;
@@ -42,19 +42,19 @@ impl TopicEditorDialog {
             .show(ctx, |ui| {
                 ui.label("Edit the channel topic:");
                 ui.add_space(4.0);
-                
+
                 ui.add(
                     egui::TextEdit::multiline(&mut self.topic_input)
                         .desired_rows(3)
-                        .desired_width(f32::INFINITY)
+                        .desired_width(f32::INFINITY),
                 );
-                
+
                 ui.add_space(8.0);
-                
+
                 ui.horizontal(|ui| {
                     // Only enable save if topic changed
                     let changed = self.topic_input != self.original_topic;
-                    
+
                     if ui.add_enabled(changed, egui::Button::new("Save")).clicked() {
                         action = Some(DialogAction::SetTopic {
                             channel: self.channel.clone(),
@@ -62,16 +62,16 @@ impl TopicEditorDialog {
                         });
                         should_close = true;
                     }
-                    
+
                     if ui.button("Cancel").clicked() {
                         should_close = true;
                     }
-                    
+
                     if changed {
                         ui.label(
                             egui::RichText::new("(modified)")
                                 .small()
-                                .color(egui::Color32::YELLOW)
+                                .color(egui::Color32::YELLOW),
                         );
                     }
                 });

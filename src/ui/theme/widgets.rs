@@ -1,7 +1,7 @@
 //! Avatar rendering and identicon generation.
 
-use eframe::egui::Color32;
 use super::colors::nick_color;
+use eframe::egui::Color32;
 
 /// Render a circular avatar with identicon pattern generated from nickname hash.
 ///
@@ -23,10 +23,8 @@ use super::colors::nick_color;
 ///
 /// Response for the avatar widget (for hover/click handling)
 pub fn render_avatar(ui: &mut eframe::egui::Ui, nick: &str, size: f32) -> eframe::egui::Response {
-    let (rect, response) = ui.allocate_exact_size(
-        eframe::egui::vec2(size, size),
-        eframe::egui::Sense::hover(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(eframe::egui::vec2(size, size), eframe::egui::Sense::hover());
 
     let bg_color = nick_color(nick);
     let painter = ui.painter();
@@ -113,7 +111,10 @@ mod tests {
         assert_eq!(pattern1, pattern2, "Same nick should produce same pattern");
 
         let pattern3 = generate_identicon_pattern("bob");
-        assert_ne!(pattern1, pattern3, "Different nicks should produce different patterns");
+        assert_ne!(
+            pattern1, pattern3,
+            "Different nicks should produce different patterns"
+        );
     }
 
     #[test]

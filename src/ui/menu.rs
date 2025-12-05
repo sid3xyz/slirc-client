@@ -1,8 +1,8 @@
 //! Traditional horizontal menu bar (Discord/Slack-inspired with IRC-specific menus)
 //! File, Edit, View, Server, Window, Help
 
-use eframe::egui;
 use crate::protocol::BackendAction;
+use eframe::egui;
 
 /// Actions that the menu can request
 #[derive(Debug, Clone, PartialEq)]
@@ -31,7 +31,8 @@ pub fn render_menu_bar(
         // File Menu
         ui.menu_button("File", |ui| {
             ui.horizontal(|ui| {
-                if ui.add_enabled(!is_connected, egui::Button::new("Connect..."))
+                if ui
+                    .add_enabled(!is_connected, egui::Button::new("Connect..."))
                     .on_hover_text("Connect to IRC server")
                     .clicked()
                 {
@@ -44,11 +45,13 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.add_enabled(is_connected, egui::Button::new("Disconnect"))
+                if ui
+                    .add_enabled(is_connected, egui::Button::new("Disconnect"))
                     .on_hover_text("Disconnect from current server")
                     .clicked()
                 {
-                    let _ = action_tx.send(BackendAction::Quit(Some("User disconnected".to_string())));
+                    let _ =
+                        action_tx.send(BackendAction::Quit(Some("User disconnected".to_string())));
                     ui.close_menu();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -59,7 +62,8 @@ pub fn render_menu_bar(
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui.button("Network Manager...")
+                if ui
+                    .button("Network Manager...")
                     .on_hover_text("Manage saved IRC networks")
                     .clicked()
                 {
@@ -74,10 +78,7 @@ pub fn render_menu_bar(
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui.button("Quit")
-                    .on_hover_text("Exit slirc")
-                    .clicked()
-                {
+                if ui.button("Quit").on_hover_text("Exit slirc").clicked() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -91,7 +92,8 @@ pub fn render_menu_bar(
             ui.horizontal(|ui| {
                 // Note: Cut/Copy/Paste are handled by egui automatically for text inputs
                 // These menu items are for discoverability and consistency
-                if ui.add_enabled(false, egui::Button::new("Cut"))
+                if ui
+                    .add_enabled(false, egui::Button::new("Cut"))
                     .on_hover_text("Cut selected text (handled by system)")
                     .on_disabled_hover_text("Select text in input first")
                     .clicked()
@@ -104,7 +106,8 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.add_enabled(false, egui::Button::new("Copy"))
+                if ui
+                    .add_enabled(false, egui::Button::new("Copy"))
                     .on_hover_text("Copy selected text (handled by system)")
                     .on_disabled_hover_text("Select text first")
                     .clicked()
@@ -117,7 +120,8 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.add_enabled(false, egui::Button::new("Paste"))
+                if ui
+                    .add_enabled(false, egui::Button::new("Paste"))
                     .on_hover_text("Paste from clipboard (handled by system)")
                     .on_disabled_hover_text("Focus input first")
                     .clicked()
@@ -130,7 +134,8 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.add_enabled(false, egui::Button::new("Select All"))
+                if ui
+                    .add_enabled(false, egui::Button::new("Select All"))
                     .on_hover_text("Select all text (handled by system)")
                     .on_disabled_hover_text("Focus input first")
                     .clicked()
@@ -175,7 +180,8 @@ pub fn render_menu_bar(
 
             ui.add_enabled_ui(is_connected, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("Join Channel...")
+                    if ui
+                        .button("Join Channel...")
                         .on_hover_text("Join an IRC channel")
                         .clicked()
                     {
@@ -189,7 +195,11 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.add_enabled(is_connected && in_channel, egui::Button::new("Part Channel"))
+                if ui
+                    .add_enabled(
+                        is_connected && in_channel,
+                        egui::Button::new("Part Channel"),
+                    )
                     .on_hover_text("Leave current channel")
                     .clicked()
                 {
@@ -208,7 +218,8 @@ pub fn render_menu_bar(
 
             ui.add_enabled_ui(is_connected, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("List Channels...")
+                    if ui
+                        .button("List Channels...")
                         .on_hover_text("List all channels on server")
                         .clicked()
                     {
@@ -226,7 +237,8 @@ pub fn render_menu_bar(
         // Window Menu
         ui.menu_button("Window", |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Minimize")
+                if ui
+                    .button("Minimize")
                     .on_hover_text("Minimize window")
                     .clicked()
                 {
@@ -239,13 +251,14 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.button("Toggle Fullscreen")
+                if ui
+                    .button("Toggle Fullscreen")
                     .on_hover_text("Enter/exit fullscreen mode")
                     .clicked()
                 {
                     // Toggle fullscreen by checking current state
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(
-                        !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false))
+                        !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false)),
                     ));
                     ui.close_menu();
                 }
@@ -257,7 +270,8 @@ pub fn render_menu_bar(
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui.button("Bring All to Front")
+                if ui
+                    .button("Bring All to Front")
                     .on_hover_text("Bring all windows to front")
                     .clicked()
                 {
@@ -270,7 +284,8 @@ pub fn render_menu_bar(
         // Help Menu
         ui.menu_button("Help", |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Keyboard Shortcuts")
+                if ui
+                    .button("Keyboard Shortcuts")
                     .on_hover_text("Show keyboard shortcuts")
                     .clicked()
                 {
@@ -283,7 +298,8 @@ pub fn render_menu_bar(
             });
 
             ui.horizontal(|ui| {
-                if ui.button("IRC Commands...")
+                if ui
+                    .button("IRC Commands...")
                     .on_hover_text("List available IRC commands")
                     .clicked()
                 {

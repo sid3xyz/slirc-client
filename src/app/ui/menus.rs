@@ -22,7 +22,9 @@ impl SlircApp {
                             if ui.button("Query (PM)").clicked() {
                                 // Create or switch to private message buffer
                                 if !self.state.buffers.contains_key(user) {
-                                    self.state.buffers.insert(user.to_string(), ChannelBuffer::new());
+                                    self.state
+                                        .buffers
+                                        .insert(user.to_string(), ChannelBuffer::new());
                                     self.state.buffers_order.push(user.to_string());
                                 }
                                 self.state.active_buffer = user.to_string();

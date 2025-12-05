@@ -12,15 +12,21 @@ use crate::config::Network;
 pub enum DialogAction {
     // Network Manager actions
     NetworkConnect(Network),
-    NetworkSave { index: Option<usize>, network: Network },
+    NetworkSave {
+        index: Option<usize>,
+        network: Network,
+    },
     NetworkDelete(usize),
-    
+
     // Nick change
     ChangeNick(String),
-    
+
     // Channel browser
     JoinChannel(String),
-    
+
     // Topic editor
-    SetTopic { channel: String, topic: String },
+    SetTopic {
+        channel: String,
+        topic: String,
+    },
 }

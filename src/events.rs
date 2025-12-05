@@ -16,7 +16,9 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
         GuiEvent::Connected => {
             state.is_connected = true;
             let ts = Local::now().format("%H:%M:%S").to_string();
-            state.system_log.push(format!("[{}] ✓ Connected and registered!", ts));
+            state
+                .system_log
+                .push(format!("[{}] ✓ Connected and registered!", ts));
             // Expand the server in the network list and show a status toast
             state.expanded_networks.insert(state.server_name.clone());
             state.status_messages.push((
@@ -29,15 +31,21 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
         GuiEvent::Disconnected(reason) => {
             state.is_connected = false;
             let ts = Local::now().format("%H:%M:%S").to_string();
-            state.system_log.push(format!("[{}] ✗ Disconnected: {}", ts, reason));
-            state.status_messages.push(("Disconnected".into(), std::time::Instant::now()));
+            state
+                .system_log
+                .push(format!("[{}] ✗ Disconnected: {}", ts, reason));
+            state
+                .status_messages
+                .push(("Disconnected".into(), std::time::Instant::now()));
             None
         }
 
         GuiEvent::Error(msg) => {
             let ts = Local::now().format("%H:%M:%S").to_string();
             state.system_log.push(format!("[{}] ⚠ Error: {}", ts, msg));
-            state.status_messages.push((format!("Error: {}", msg), std::time::Instant::now()));
+            state
+                .status_messages
+                .push((format!("Error: {}", msg), std::time::Instant::now()));
             None
         }
 
@@ -64,7 +72,9 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             // Update our_nick in state
             state.our_nick = new.clone();
             let ts = Local::now().format("%H:%M:%S").to_string();
-            state.system_log.push(format!("[{}] Nick changed to {} (was: {})", ts, new, old));
+            state
+                .system_log
+                .push(format!("[{}] Nick changed to {} (was: {})", ts, new, old));
             // Return new nick so caller can update UI field
             Some(new)
         }
@@ -113,8 +123,8 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             } else {
                 MessageType::Normal
             };
-            let msg = RenderedMessage::new(ts.clone(), sender.clone(), text.clone())
-                .with_type(msg_type);
+            let msg =
+                RenderedMessage::new(ts.clone(), sender.clone(), text.clone()).with_type(msg_type);
             buffer.add_message(msg, is_active || is_own_msg, mention);
 
             // Keep user list updated if a new nick speaks
@@ -145,8 +155,12 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
 
         GuiEvent::JoinedChannel(channel) => {
             let ts = Local::now().format("%H:%M:%S").to_string();
-            state.system_log.push(format!("[{}] ✓ Joined {}", ts, channel));
-            state.status_messages.push((format!("Joined {}", channel), std::time::Instant::now()));
+            state
+                .system_log
+                .push(format!("[{}] ✓ Joined {}", ts, channel));
+            state
+                .status_messages
+                .push((format!("Joined {}", channel), std::time::Instant::now()));
             let buffer = state.ensure_buffer(&channel);
             buffer.clear_unread();
             buffer.has_highlight = false;
@@ -156,8 +170,12 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
 
         GuiEvent::PartedChannel(channel) => {
             let ts = Local::now().format("%H:%M:%S").to_string();
-            state.system_log.push(format!("[{}] ← Left {}", ts, channel));
-            state.status_messages.push((format!("Left {}", channel), std::time::Instant::now()));
+            state
+                .system_log
+                .push(format!("[{}] ← Left {}", ts, channel));
+            state
+                .status_messages
+                .push((format!("Left {}", channel), std::time::Instant::now()));
             state.buffers.remove(&channel);
             state.buffers_order.retain(|b| *b != channel);
             if state.active_buffer == channel {
@@ -170,9 +188,8 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             let is_active = state.active_buffer == channel;
             let buffer = state.ensure_buffer(&channel);
             let ts = Local::now().format("%H:%M:%S").to_string();
-            let join_msg =
-                RenderedMessage::new(ts.clone(), "→".into(), format!("{} joined", nick))
-                    .with_type(MessageType::Join);
+            let join_msg = RenderedMessage::new(ts.clone(), "→".into(), format!("{} joined", nick))
+                .with_type(MessageType::Join);
             buffer.add_message(join_msg, is_active, false);
             if !buffer.users.iter().any(|u| u.nick == nick) {
                 buffer.users.push(UserInfo {
@@ -194,12 +211,9 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
             let buffer = state.ensure_buffer(&channel);
             let msg = message.map(|m| format!(" ({})", m)).unwrap_or_default();
             let ts = Local::now().format("%H:%M:%S").to_string();
-            let part_msg = RenderedMessage::new(
-                ts.clone(),
-                "←".into(),
-                format!("{} left{}", nick, msg),
-            )
-            .with_type(MessageType::Part);
+            let part_msg =
+                RenderedMessage::new(ts.clone(), "←".into(), format!("{} left{}", nick, msg))
+                    .with_type(MessageType::Part);
             buffer.add_message(part_msg, is_active, false);
             buffer.users.retain(|u| u.nick != nick);
             // Unread handled by add_message
@@ -308,9 +322,7 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
                                 buffer.channel_modes.push(mode);
                             }
                         } else {
-                            buffer.channel_modes = buffer
-                                .channel_modes
-                                .replace(mode, "");
+                            buffer.channel_modes = buffer.channel_modes.replace(mode, "");
                         }
                     }
                 }
@@ -322,12 +334,9 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
 
             // Log to buffer
             let ts = Local::now().format("%H:%M:%S").to_string();
-            let mode_msg = RenderedMessage::new(
-                ts,
-                "*".into(),
-                format!("{} set mode {}", set_by, modes),
-            )
-            .with_type(MessageType::Normal); // Using Normal as Mode type doesn't exist yet
+            let mode_msg =
+                RenderedMessage::new(ts, "*".into(), format!("{} set mode {}", set_by, modes))
+                    .with_type(MessageType::Normal); // Using Normal as Mode type doesn't exist yet
             buffer.add_message(mode_msg, is_active, false);
 
             None
@@ -340,13 +349,18 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
         }
 
         // Server info from ISUPPORT - log network name
-        GuiEvent::ServerInfo { network, casemapping } => {
+        GuiEvent::ServerInfo {
+            network,
+            casemapping,
+        } => {
             let ts = Local::now().format("%H:%M:%S").to_string();
             if let Some(net) = network {
                 state.system_log.push(format!("[{}] Network: {}", ts, net));
             }
             if let Some(cm) = casemapping {
-                state.system_log.push(format!("[{}] Casemapping: {}", ts, cm));
+                state
+                    .system_log
+                    .push(format!("[{}] Casemapping: {}", ts, cm));
             }
             None
         }
@@ -355,11 +369,12 @@ pub fn process_single_event(state: &mut ClientState, event: GuiEvent) -> Option<
         GuiEvent::SaslResult { success, message } => {
             let ts = Local::now().format("%H:%M:%S").to_string();
             let icon = if success { "✓" } else { "⚠" };
-            state.system_log.push(format!("[{}] {} SASL: {}", ts, icon, message));
-            state.status_messages.push((
-                format!("SASL: {}", message),
-                std::time::Instant::now(),
-            ));
+            state
+                .system_log
+                .push(format!("[{}] {} SASL: {}", ts, icon, message));
+            state
+                .status_messages
+                .push((format!("SASL: {}", message), std::time::Instant::now()));
             None
         }
     }

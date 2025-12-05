@@ -2,8 +2,8 @@
 
 use super::SlircApp;
 use crate::events;
-use crate::ui::dialogs::ChannelListItem;
 use crate::protocol::GuiEvent;
+use crate::ui::dialogs::ChannelListItem;
 
 impl SlircApp {
     pub fn process_events(&mut self) {

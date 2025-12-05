@@ -51,7 +51,7 @@ impl ChannelBrowserDialog {
 
     /// Render the channel browser dialog.
     /// Returns `Some(DialogAction::JoinChannel)` if the user wants to join a channel.
-    /// 
+    ///
     /// The second return value indicates if the dialog is still open.
     pub fn render(&mut self, ctx: &egui::Context) -> (Option<DialogAction>, bool) {
         let mut action: Option<DialogAction> = None;
@@ -70,14 +70,11 @@ impl ChannelBrowserDialog {
                 // Filter input
                 ui.horizontal(|ui| {
                     ui.label("Filter:");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.filter)
-                            .desired_width(200.0)
-                    );
+                    ui.add(egui::TextEdit::singleline(&mut self.filter).desired_width(200.0));
                     if ui.button("Clear").clicked() {
                         self.filter.clear();
                     }
-                    
+
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("🔄 Refresh").clicked() {
                             // The app will need to send a new LIST command
@@ -136,7 +133,7 @@ impl ChannelBrowserDialog {
                                     for item in filtered.iter().take(200) {
                                         ui.label(&item.channel);
                                         ui.label(format!("{}", item.user_count));
-                                        
+
                                         // Truncate long topics
                                         let topic_display = if item.topic.len() > 60 {
                                             format!("{}...", &item.topic[..60])
@@ -144,7 +141,7 @@ impl ChannelBrowserDialog {
                                             item.topic.clone()
                                         };
                                         ui.label(topic_display);
-                                        
+
                                         if ui.button("Join").clicked() {
                                             action = Some(DialogAction::JoinChannel(
                                                 item.channel.clone(),
@@ -153,7 +150,7 @@ impl ChannelBrowserDialog {
                                         }
                                         ui.end_row();
                                     }
-                                    
+
                                     if filtered.len() > 200 {
                                         ui.label("...");
                                         ui.label("");
@@ -232,9 +229,9 @@ mod tests {
         });
         dialog.set_loading_complete();
         dialog.filter = "test".to_string();
-        
+
         dialog.clear();
-        
+
         assert!(dialog.channels.is_empty());
         assert!(dialog.filter.is_empty());
         assert!(dialog.is_loading);

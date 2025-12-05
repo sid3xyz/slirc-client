@@ -1,9 +1,9 @@
 //! User list panel rendering with role grouping and status indicators.
 
-use eframe::egui::{self, Color32, Stroke};
 use crate::buffer::ChannelBuffer;
 use crate::protocol::UserInfo;
 use crate::ui::theme::{self, SlircTheme};
+use eframe::egui::{self, Color32, Stroke};
 
 /// Render the right user list panel.
 pub fn render_user_list(
@@ -15,7 +15,11 @@ pub fn render_user_list(
     context_menu_target: &mut Option<String>,
 ) {
     let dark_mode = ctx.style().visuals.dark_mode;
-    let theme = if dark_mode { SlircTheme::dark() } else { SlircTheme::light() };
+    let theme = if dark_mode {
+        SlircTheme::dark()
+    } else {
+        SlircTheme::light()
+    };
     let sidebar_bg = theme.surface[1];
 
     // Group users by role
@@ -51,18 +55,39 @@ pub fn render_user_list(
                 .show(ui, |ui| {
                     // Operators section
                     if !ops.is_empty() {
-                        render_user_section(ui, "OPERATORS", &ops, &theme, context_menu_visible, context_menu_target);
+                        render_user_section(
+                            ui,
+                            "OPERATORS",
+                            &ops,
+                            &theme,
+                            context_menu_visible,
+                            context_menu_target,
+                        );
                     }
 
                     // Voiced section
                     if !voiced.is_empty() {
-                        render_user_section(ui, "VOICED", &voiced, &theme, context_menu_visible, context_menu_target);
+                        render_user_section(
+                            ui,
+                            "VOICED",
+                            &voiced,
+                            &theme,
+                            context_menu_visible,
+                            context_menu_target,
+                        );
                     }
 
                     // Regular users section
                     if !regular.is_empty() {
                         let label = format!("ONLINE — {}", regular.len());
-                        render_user_section(ui, &label, &regular, &theme, context_menu_visible, context_menu_target);
+                        render_user_section(
+                            ui,
+                            &label,
+                            &regular,
+                            &theme,
+                            context_menu_visible,
+                            context_menu_target,
+                        );
                     }
                 });
         });
@@ -91,11 +116,7 @@ fn render_user_section(
             "●"
         };
 
-        ui.label(
-            egui::RichText::new(icon)
-                .size(9.0)
-                .color(theme.text_muted),
-        );
+        ui.label(egui::RichText::new(icon).size(9.0).color(theme.text_muted));
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(title)
@@ -133,10 +154,8 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
     let height = 32.0; // Increased from 28 for better touch targets
     let available_width = ui.available_width();
 
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(available_width, height),
-        egui::Sense::click(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(available_width, height), egui::Sense::click());
 
     let hovered = response.hovered();
 
@@ -155,11 +174,8 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
     // Role indicator overlay on avatar
     let status_color = theme::prefix_color(theme, user.prefix);
     let ring_center = egui::pos2(rect.min.x + 20.0, rect.center().y);
-    ui.painter().circle_stroke(
-        ring_center,
-        10.0,
-        egui::Stroke::new(2.0, status_color),
-    );
+    ui.painter()
+        .circle_stroke(ring_center, 10.0, egui::Stroke::new(2.0, status_color));
 
     // Username with role color hint
     let nick_color = if user.prefix.is_some() {
@@ -189,12 +205,16 @@ fn render_user_item(ui: &mut egui::Ui, user: &UserInfo, theme: &SlircTheme) -> (
 
         if !badge_char.is_empty() {
             let badge_font = egui::FontId::new(8.0, egui::FontFamily::Proportional);
-            let galley = ui.fonts(|f| f.layout_no_wrap(badge_char.to_string(), badge_font, Color32::WHITE));
+            let galley =
+                ui.fonts(|f| f.layout_no_wrap(badge_char.to_string(), badge_font, Color32::WHITE));
 
             let badge_width = galley.size().x + 6.0;
             let badge_height = 14.0;
             let badge_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.max.x - badge_width - 12.0, rect.center().y - badge_height / 2.0),
+                egui::pos2(
+                    rect.max.x - badge_width - 12.0,
+                    rect.center().y - badge_height / 2.0,
+                ),
                 egui::vec2(badge_width, badge_height),
             );
 

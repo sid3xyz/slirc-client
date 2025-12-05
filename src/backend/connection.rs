@@ -12,11 +12,7 @@ pub fn create_tls_connector() -> Result<TlsConnector, String> {
     let mut root_store = RootCertStore::empty();
 
     // Use webpki-roots for cross-platform compatibility
-    root_store.extend(
-        webpki_roots::TLS_SERVER_ROOTS
-            .iter()
-            .cloned()
-    );
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
     let config = rustls::ClientConfig::builder()
         .with_root_certificates(root_store)

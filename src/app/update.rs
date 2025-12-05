@@ -78,7 +78,8 @@ impl eframe::App for SlircApp {
 
         // Right panel: User list (for channels)
         if self.show_user_list
-            && (self.state.active_buffer.starts_with('#') || self.state.active_buffer.starts_with('&'))
+            && (self.state.active_buffer.starts_with('#')
+                || self.state.active_buffer.starts_with('&'))
         {
             if let Some(buffer) = self.state.buffers.get(&self.state.active_buffer) {
                 use crate::ui;
@@ -118,6 +119,7 @@ impl eframe::App for SlircApp {
         }
 
         // Shortcuts help overlay (Ctrl+/ or F1)
-        self.shortcuts.render_help_overlay(ctx, &mut self.show_shortcuts_help);
+        self.shortcuts
+            .render_help_overlay(ctx, &mut self.show_shortcuts_help);
     }
 }

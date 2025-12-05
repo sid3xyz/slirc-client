@@ -128,10 +128,8 @@ pub fn handle_user_command(
                         if buffer.topic.is_empty() {
                             system_log.push(format!("No topic set for {}", active_buffer));
                         } else {
-                            system_log.push(format!(
-                                "Topic for {}: {}",
-                                active_buffer, buffer.topic
-                            ));
+                            system_log
+                                .push(format!("Topic for {}: {}", active_buffer, buffer.topic));
                         }
                     }
                 } else {

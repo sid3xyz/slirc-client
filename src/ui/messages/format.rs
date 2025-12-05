@@ -148,9 +148,8 @@ pub(crate) fn render_message_text(
     use once_cell::sync::Lazy;
     use regex::Regex;
 
-    static URL_RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(https?://[^\s]+)").expect("URL regex pattern is valid")
-    });
+    static URL_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(https?://[^\s]+)").expect("URL regex pattern is valid"));
 
     let base_color = if mention {
         Color32::from_rgb(255, 210, 100)
@@ -169,14 +168,15 @@ pub(crate) fn render_message_text(
             for word in span.text.split_inclusive(char::is_whitespace) {
                 if URL_RE.is_match(word.trim()) {
                     let url = word.trim();
-                    ui.hyperlink_to(
-                        egui::RichText::new(url).size(14.0).color(theme.info),
-                        url,
-                    );
+                    ui.hyperlink_to(egui::RichText::new(url).size(14.0).color(theme.info), url);
                     if word.ends_with(char::is_whitespace) {
                         ui.label(" ");
                     }
-                } else if buffer.users.iter().any(|u| u.nick == word.trim().trim_start_matches('@')) {
+                } else if buffer
+                    .users
+                    .iter()
+                    .any(|u| u.nick == word.trim().trim_start_matches('@'))
+                {
                     // Nick mention
                     let nick = word.trim().trim_start_matches('@');
                     let nick_col = theme::nick_color(nick);

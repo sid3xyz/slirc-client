@@ -12,8 +12,8 @@
 pub mod core;
 pub mod dialogs;
 pub mod events;
-pub mod update;
 pub mod ui;
+pub mod update;
 
 // Re-export SlircApp for public API
 pub use core::SlircApp;

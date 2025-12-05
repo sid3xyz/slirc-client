@@ -44,12 +44,30 @@ pub fn configure_text_styles() -> BTreeMap<TextStyle, FontId> {
         (TextStyle::Heading, FontId::new(16.0, Proportional)),
         (TextStyle::Monospace, FontId::new(13.0, Monospace)),
         // IRC-specific custom styles
-        (TextStyle::Name("irc_message".into()), FontId::new(14.0, Monospace)),
-        (TextStyle::Name("irc_timestamp".into()), FontId::new(11.0, Monospace)),
-        (TextStyle::Name("irc_nick".into()), FontId::new(13.0, Proportional)),
-        (TextStyle::Name("topic".into()), FontId::new(12.0, Proportional)),
-        (TextStyle::Name("section_header".into()), FontId::new(11.0, Proportional)),
-        (TextStyle::Name("channel_name".into()), FontId::new(14.0, Proportional)),
+        (
+            TextStyle::Name("irc_message".into()),
+            FontId::new(14.0, Monospace),
+        ),
+        (
+            TextStyle::Name("irc_timestamp".into()),
+            FontId::new(11.0, Monospace),
+        ),
+        (
+            TextStyle::Name("irc_nick".into()),
+            FontId::new(13.0, Proportional),
+        ),
+        (
+            TextStyle::Name("topic".into()),
+            FontId::new(12.0, Proportional),
+        ),
+        (
+            TextStyle::Name("section_header".into()),
+            FontId::new(11.0, Proportional),
+        ),
+        (
+            TextStyle::Name("channel_name".into()),
+            FontId::new(14.0, Proportional),
+        ),
     ]
     .into()
 }

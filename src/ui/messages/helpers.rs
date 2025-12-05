@@ -37,8 +37,7 @@ pub(crate) fn contains_mention(text: &str, nickname: &str) -> bool {
             || !text.as_bytes()[abs_pos - 1].is_ascii_alphanumeric()
             || (abs_pos > 0 && text.as_bytes()[abs_pos - 1] == b'@'); // @mention
 
-        let at_end = end_pos >= text.len()
-            || !text.as_bytes()[end_pos].is_ascii_alphanumeric();
+        let at_end = end_pos >= text.len() || !text.as_bytes()[end_pos].is_ascii_alphanumeric();
 
         if at_start && at_end {
             return true;

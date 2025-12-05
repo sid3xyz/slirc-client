@@ -7,7 +7,7 @@ use std::thread;
 
 use crate::backend::run_backend;
 use crate::config::{
-    ConnectionConfig, load_nickserv_password, load_settings, save_settings, Settings,
+    load_nickserv_password, load_settings, save_settings, ConnectionConfig, Settings,
 };
 use crate::dialog_manager::DialogManager;
 use crate::input_state::InputState;

@@ -5,12 +5,12 @@
 //! logs/network/channel/YYYY-MM-DD.log
 
 use chrono::Local;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::thread;
-use crossbeam_channel::{unbounded, Receiver, Sender};
 
 /// A log entry to be written to disk
 #[derive(Debug, Clone)]
@@ -106,11 +106,16 @@ fn write_log_entry(
     };
 
     // Format: [HH:MM:SS] <Nick> Message
-    writeln!(writer, "[{}] <{}> {}", entry.timestamp, entry.nick, entry.message)
-        .map_err(|e| format!("Failed to write log entry: {}", e))?;
+    writeln!(
+        writer,
+        "[{}] <{}> {}",
+        entry.timestamp, entry.nick, entry.message
+    )
+    .map_err(|e| format!("Failed to write log entry: {}", e))?;
 
     // Flush periodically to ensure logs are written
-    writer.flush()
+    writer
+        .flush()
         .map_err(|e| format!("Failed to flush log: {}", e))?;
 
     Ok(())
@@ -118,8 +123,7 @@ fn write_log_entry(
 
 /// Get the platform-specific log directory using XDG conventions
 fn get_log_directory() -> Result<PathBuf, String> {
-    let base = directories::BaseDirs::new()
-        .ok_or("Failed to determine home directory")?;
+    let base = directories::BaseDirs::new().ok_or("Failed to determine home directory")?;
 
     // Use XDG_DATA_HOME on Linux, equivalent on other platforms
     let data_dir = base.data_dir();

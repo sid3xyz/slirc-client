@@ -94,16 +94,27 @@ pub fn render_toolbar(
                 );
                 ui.add_space(4.0);
                 // Green glowing dot for connected
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
                 let center = rect.center();
                 // Glow effect
-                ui.painter().circle_filled(center, 6.0, Color32::from_rgba_unmultiplied(34, 197, 94, 40));
-                ui.painter().circle_filled(center, 4.0, Color32::from_rgb(34, 197, 94));
+                ui.painter().circle_filled(
+                    center,
+                    6.0,
+                    Color32::from_rgba_unmultiplied(34, 197, 94, 40),
+                );
+                ui.painter()
+                    .circle_filled(center, 4.0, Color32::from_rgb(34, 197, 94));
             } else {
                 // Gray hollow circle for disconnected
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
                 let center = rect.center();
-                ui.painter().circle_stroke(center, 4.0, Stroke::new(1.5, Color32::from_rgb(100, 100, 100)));
+                ui.painter().circle_stroke(
+                    center,
+                    4.0,
+                    Stroke::new(1.5, Color32::from_rgb(100, 100, 100)),
+                );
             }
         });
     });
