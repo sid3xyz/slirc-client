@@ -3,9 +3,9 @@
 //! These tests exercise full workflows across multiple modules to ensure
 //! proper integration between backend, events, commands, and UI state.
 
+use crossbeam_channel::unbounded;
 use slirc_client::buffer::{ChannelBuffer, MessageType, RenderedMessage};
 use slirc_client::protocol::{BackendAction, GuiEvent, UserInfo};
-use crossbeam_channel::unbounded;
 use std::collections::HashMap;
 
 /// Test channel buffer state management with multiple channels
@@ -378,14 +378,10 @@ fn test_buffer_state_isolation() {
     buffers.insert("#channel2".to_string(), ChannelBuffer::new());
 
     // Add users to channel1
-    buffers
-        .get_mut("#channel1")
-        .unwrap()
-        .users
-        .push(UserInfo {
-            nick: "alice".to_string(),
-            prefix: Some('@'),
-        });
+    buffers.get_mut("#channel1").unwrap().users.push(UserInfo {
+        nick: "alice".to_string(),
+        prefix: Some('@'),
+    });
 
     // Add messages to channel2
     buffers.get_mut("#channel2").unwrap().add_message(
@@ -549,14 +545,14 @@ fn test_port_selection_for_tls() {
 fn test_irc_color_codes_parsing() {
     // Test various color code formats
     let test_cases = vec![
-        "\x0304Red text",              // Foreground only
-        "\x0304,02Red on blue",        // Foreground and background
-        "\x03Reset colors",            // Color reset
-        "Normal \x0312blue\x03 normal", // Color in middle
-        "\x02Bold\x02 normal",         // Bold toggle
-        "\x1DItalic\x1D normal",       // Italic toggle
-        "\x02\x0304Bold red\x0F reset all", // Multiple formats
-        "\x0399,01Light green on black", // Two-digit codes
+        "\x0304Red text",                        // Foreground only
+        "\x0304,02Red on blue",                  // Foreground and background
+        "\x03Reset colors",                      // Color reset
+        "Normal \x0312blue\x03 normal",          // Color in middle
+        "\x02Bold\x02 normal",                   // Bold toggle
+        "\x1DItalic\x1D normal",                 // Italic toggle
+        "\x02\x0304Bold red\x0F reset all",      // Multiple formats
+        "\x0399,01Light green on black",         // Two-digit codes
         "Mixed \x02bold\x0304red\x1Ditalic\x0F", // Complex formatting
     ];
 
@@ -587,16 +583,16 @@ fn test_irc_color_codes_parsing() {
 fn test_irc_formatting_edge_cases() {
     // Edge cases that should be handled gracefully
     let edge_cases = vec![
-        "",                   // Empty string
-        "\x03",               // Color code at end
-        "\x02",               // Bold at end
-        "\x03\x02\x1D\x0F",   // Only control codes
-        "\x0399",             // Incomplete color code (no comma)
-        "\x03,",              // Color code with comma but no bg
-        "\x03,,",             // Multiple commas
-        "Text\x03\x03\x03",   // Multiple consecutive color resets
-        "\x02\x02\x02Text",   // Multiple bold toggles
-        "\x0F\x0FNormal",     // Multiple resets
+        "",                 // Empty string
+        "\x03",             // Color code at end
+        "\x02",             // Bold at end
+        "\x03\x02\x1D\x0F", // Only control codes
+        "\x0399",           // Incomplete color code (no comma)
+        "\x03,",            // Color code with comma but no bg
+        "\x03,,",           // Multiple commas
+        "Text\x03\x03\x03", // Multiple consecutive color resets
+        "\x02\x02\x02Text", // Multiple bold toggles
+        "\x0F\x0FNormal",   // Multiple resets
     ];
 
     for text in edge_cases {

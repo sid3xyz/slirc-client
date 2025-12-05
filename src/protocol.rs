@@ -39,7 +39,7 @@ pub enum BackendAction {
         nick: String,
         reason: Option<String>,
     },
-    /// Set a user mode in a channel by sending MODE <channel> <+/-mode> <nick>
+    /// Set a user mode in a channel by sending `MODE <channel> <+/-mode> <nick>`
     SetUserMode {
         channel: String,
         nick: String,

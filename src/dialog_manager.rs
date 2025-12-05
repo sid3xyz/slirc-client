@@ -8,13 +8,13 @@ use eframe::egui::Context;
 
 use crate::config::Network;
 use crate::ui::dialogs::{
-    ChannelBrowserDialog, ChannelListItem, DialogAction, HelpDialog,
-    NetworkManagerDialog, NickChangeDialog, TopicEditorDialog,
+    ChannelBrowserDialog, ChannelListItem, DialogAction, HelpDialog, NetworkManagerDialog,
+    NickChangeDialog, TopicEditorDialog,
 };
 
 /// Manages all application dialogs in one place.
 ///
-/// Uses the Option<Dialog> pattern where None = closed, Some = open.
+/// Uses the `Option<Dialog>` pattern where None = closed, Some = open.
 pub struct DialogManager {
     pub help_dialog: HelpDialog,
     pub nick_change_dialog: Option<NickChangeDialog>,

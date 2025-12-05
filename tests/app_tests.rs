@@ -2,12 +2,12 @@
 //!
 //! Tests for event processing, command handling, and UI state management.
 
+use crossbeam_channel::unbounded;
 use slirc_client::app::SlircApp;
 use slirc_client::buffer::ChannelBuffer;
 use slirc_client::config::DEFAULT_SERVER;
 use slirc_client::protocol::{BackendAction, GuiEvent, UserInfo};
 use slirc_client::state::ClientState;
-use crossbeam_channel::unbounded;
 use std::collections::HashSet;
 
 /// Helper to create a test SlircApp instance
@@ -54,8 +54,14 @@ fn test_clean_motd() {
     assert_eq!(slirc_client::events::clean_motd_line("-"), "");
     assert_eq!(slirc_client::events::clean_motd_line(":-"), "");
     assert_eq!(slirc_client::events::clean_motd_line(":- "), "");
-    assert_eq!(slirc_client::events::clean_motd_line(":- Hello world"), "Hello world");
-    assert_eq!(slirc_client::events::clean_motd_line("- ═════════"), "═════════"); // preserved with bundled fonts
+    assert_eq!(
+        slirc_client::events::clean_motd_line(":- Hello world"),
+        "Hello world"
+    );
+    assert_eq!(
+        slirc_client::events::clean_motd_line("- ═════════"),
+        "═════════"
+    ); // preserved with bundled fonts
     assert_eq!(slirc_client::events::clean_motd_line("Hello"), "Hello");
     assert_eq!(slirc_client::events::clean_motd_line(" - Hello"), "Hello");
 }
@@ -220,7 +226,9 @@ fn test_topic_command_set_and_show() {
     let (mut app, _, action_rx) = create_test_app();
     app.state.is_connected = true;
     app.state.active_buffer = "#test".into();
-    app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+    app.state
+        .buffers
+        .insert("#test".into(), ChannelBuffer::new());
 
     // Set the message input to a topic change command and ensure the action is sent
     app.input.message_input = String::from("/topic hello world");
@@ -252,7 +260,11 @@ fn test_topic_command_set_and_show() {
         &mut app.state.system_log,
         &mut app.connection.nickname,
     ));
-    assert!(app.state.system_log.iter().any(|l| l.contains("Displayed Topic")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|l| l.contains("Displayed Topic")));
 }
 
 #[test]
@@ -260,7 +272,9 @@ fn test_kick_command_sends_action() {
     let (mut app, _, action_rx) = create_test_app();
     app.state.is_connected = true;
     app.state.active_buffer = "#test".into();
-    app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+    app.state
+        .buffers
+        .insert("#test".into(), ChannelBuffer::new());
 
     app.input.message_input = String::from("/kick alice Spamming");
     assert!(slirc_client::commands::handle_user_command(
@@ -291,7 +305,9 @@ fn test_me_command_sends_action_ctcp() {
     let (mut app, _, action_rx) = create_test_app();
     app.state.is_connected = true;
     app.state.active_buffer = "#test".into();
-    app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+    app.state
+        .buffers
+        .insert("#test".into(), ChannelBuffer::new());
 
     app.input.message_input = String::from("/me does something");
     assert!(slirc_client::commands::handle_user_command(
@@ -398,7 +414,12 @@ fn test_help_command_shows_usage() {
         &mut app.connection.nickname,
     ));
     assert!(app.state.system_log.len() > original_log_size);
-    assert!(app.state.system_log.last().unwrap().contains("Supported commands"));
+    assert!(app
+        .state
+        .system_log
+        .last()
+        .unwrap()
+        .contains("Supported commands"));
 }
 
 #[test]
@@ -416,7 +437,12 @@ fn test_unknown_command_logs_error() {
         &mut app.connection.nickname,
     ));
     assert!(app.state.system_log.len() > original_log_size);
-    assert!(app.state.system_log.last().unwrap().contains("Unknown command"));
+    assert!(app
+        .state
+        .system_log
+        .last()
+        .unwrap()
+        .contains("Unknown command"));
     assert!(app.state.system_log.last().unwrap().contains("foobar"));
 }
 
@@ -443,7 +469,9 @@ fn test_part_without_args_parts_active_channel() {
     let (mut app, _, action_rx) = create_test_app();
     app.state.is_connected = true;
     app.state.active_buffer = "#test".into();
-    app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+    app.state
+        .buffers
+        .insert("#test".into(), ChannelBuffer::new());
 
     app.input.message_input = String::from("/part");
     assert!(slirc_client::commands::handle_user_command(
@@ -469,7 +497,9 @@ fn test_user_joined_event() {
     let (mut app, event_tx, _) = create_test_app();
     app.state.is_connected = true;
     app.state.active_buffer = "#test".into();
-    app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+    app.state
+        .buffers
+        .insert("#test".into(), ChannelBuffer::new());
 
     event_tx
         .send(GuiEvent::UserJoined {
@@ -482,7 +512,10 @@ fn test_user_joined_event() {
 
     let buffer = app.state.buffers.get("#test").unwrap();
     assert!(buffer.users.iter().any(|u| u.nick == "alice"));
-    assert!(buffer.messages.iter().any(|m| m.text.contains("alice joined")));
+    assert!(buffer
+        .messages
+        .iter()
+        .any(|m| m.text.contains("alice joined")));
 }
 
 #[test]
@@ -509,7 +542,10 @@ fn test_user_parted_event() {
 
     let buffer = app.state.buffers.get("#test").unwrap();
     assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
-    assert!(buffer.messages.iter().any(|m| m.text.contains("alice left")));
+    assert!(buffer
+        .messages
+        .iter()
+        .any(|m| m.text.contains("alice left")));
     assert!(buffer.messages.iter().any(|m| m.text.contains("Goodbye")));
 }
 
@@ -537,7 +573,10 @@ fn test_user_quit_event() {
     let buffer = app.state.buffers.get("#test").unwrap();
     assert!(!buffer.users.iter().any(|u| u.nick == "bob"));
     assert!(buffer.messages.iter().any(|m| m.text.contains("bob quit")));
-    assert!(buffer.messages.iter().any(|m| m.text.contains("Connection reset")));
+    assert!(buffer
+        .messages
+        .iter()
+        .any(|m| m.text.contains("Connection reset")));
 }
 
 #[test]
@@ -566,7 +605,10 @@ fn test_nick_changed_event() {
     let buffer = app.state.buffers.get("#test").unwrap();
     assert!(buffer.users.iter().any(|u| u.nick == "alice_away"));
     assert!(!buffer.users.iter().any(|u| u.nick == "alice"));
-    assert!(buffer.messages.iter().any(|m| m.text.contains("alice is now known as alice_away")));
+    assert!(buffer
+        .messages
+        .iter()
+        .any(|m| m.text.contains("alice is now known as alice_away")));
 }
 
 #[test]
@@ -599,8 +641,16 @@ fn test_disconnected_event() {
     app.process_events();
 
     assert!(!app.state.is_connected);
-    assert!(app.state.system_log.iter().any(|m| m.contains("Disconnected")));
-    assert!(app.state.system_log.iter().any(|m| m.contains("Connection lost")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|m| m.contains("Disconnected")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|m| m.contains("Connection lost")));
 }
 
 #[test]
@@ -616,7 +666,11 @@ fn test_error_event() {
 
     assert!(app.state.system_log.len() > original_log_size);
     assert!(app.state.system_log.iter().any(|m| m.contains("Error")));
-    assert!(app.state.system_log.iter().any(|m| m.contains("Test error message")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|m| m.contains("Test error message")));
     assert!(!app.state.status_messages.is_empty());
 }
 
@@ -632,7 +686,11 @@ fn test_raw_message_event() {
     app.process_events();
 
     assert!(app.state.system_log.len() > original_log_size);
-    assert!(app.state.system_log.iter().any(|m| m.contains("PING :server")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|m| m.contains("PING :server")));
 }
 
 #[test]
@@ -649,7 +707,11 @@ fn test_joined_channel_event() {
 
     assert_eq!(app.state.active_buffer, "#newchan");
     assert!(app.state.buffers.contains_key("#newchan"));
-    assert!(app.state.system_log.iter().any(|m| m.contains("Joined #newchan")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|m| m.contains("Joined #newchan")));
 }
 
 #[test]
@@ -657,7 +719,9 @@ fn test_parted_channel_event() {
     let (mut app, event_tx, _) = create_test_app();
     app.state.is_connected = true;
     app.state.active_buffer = "#test".into();
-    app.state.buffers.insert("#test".into(), ChannelBuffer::new());
+    app.state
+        .buffers
+        .insert("#test".into(), ChannelBuffer::new());
     app.state.buffers_order.push("#test".into());
 
     event_tx
@@ -669,7 +733,11 @@ fn test_parted_channel_event() {
     assert!(!app.state.buffers.contains_key("#test"));
     assert!(!app.state.buffers_order.contains(&"#test".to_string()));
     assert_eq!(app.state.active_buffer, "System");
-    assert!(app.state.system_log.iter().any(|m| m.contains("Left #test")));
+    assert!(app
+        .state
+        .system_log
+        .iter()
+        .any(|m| m.contains("Left #test")));
 }
 
 #[test]
@@ -691,5 +759,8 @@ fn test_message_received_creates_pm_buffer() {
 
     assert!(app.state.buffers.contains_key("alice"));
     let buffer = app.state.buffers.get("alice").unwrap();
-    assert!(buffer.messages.iter().any(|m| m.text.contains("Hello there!")));
+    assert!(buffer
+        .messages
+        .iter()
+        .any(|m| m.text.contains("Hello there!")));
 }

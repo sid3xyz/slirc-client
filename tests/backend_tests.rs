@@ -107,7 +107,10 @@ fn test_message_sanitization() {
 
     assert_eq!(validation::sanitize_message("Hello"), "Hello");
     assert_eq!(validation::sanitize_message("Line1\nLine2"), "Line1Line2");
-    assert_eq!(validation::sanitize_message(&"x".repeat(500)), "x".repeat(400));
+    assert_eq!(
+        validation::sanitize_message(&"x".repeat(500)),
+        "x".repeat(400)
+    );
 }
 
 #[test]
