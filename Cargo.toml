@@ -30,10 +30,8 @@ tokio = { version = "1", features = [
 ] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
-# IRC Protocol library
-slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto.git", features = [
-    "tokio",
-] }
+# IRC Protocol library (use path for workspace dev, git for standalone builds)
+slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
 
 # Channels for UI <-> Backend communication
 crossbeam-channel = "0.5"
